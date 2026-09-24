@@ -1,0 +1,1405 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Attendance PWA</title>
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📱</text></svg>">
+
+  <!-- Google Fonts & Tailwind-like CSS variables -->
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- CDNs for Libraries -->
+  <!-- html5-qrcode for scanning PC Screen QR Code -->
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <!-- jsQR for high performance QR code scanning from PC screen -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" type="text/javascript"></script>
+  <!-- face-api.js for client-side face recognition & landmarks -->
+  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js" type="text/javascript"></script>
+
+  <style>
+    :root {
+      --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      --card-bg: rgba(30, 41, 59, 0.7);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Outfit', sans-serif;
+    }
+
+    body {
+      background: var(--bg-gradient);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+      overflow-x: hidden;
+    }
+
+    header {
+      width: 100%;
+      max-width: 480px;
+      text-align: center;
+      margin-bottom: 24px;
+      padding-top: 10px;
+    }
+
+    header h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      background: linear-gradient(to right, #818cf8, #c084fc);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    header p {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 480px;
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      position: relative;
+    }
+
+    /* Tabs for navigation */
+    .tab-bar {
+      display: flex;
+      background: rgba(15, 23, 42, 0.4);
+      border-radius: 14px;
+      padding: 4px;
+      margin-bottom: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .tab-btn {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 10px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .tab-btn.active {
+      background: var(--primary);
+      color: var(--text-main);
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+    }
+
+    /* Screen Views */
+    .view-screen {
+      display: none;
+    }
+
+    .view-screen.active {
+      display: block;
+      animation: fadeIn 0.4s ease;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Input elements styling */
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label,
+    .step-label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 14px;
+      color: var(--text-main);
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.3s;
+    }
+
+    input[type="text"]:focus,
+    input[type="password"]:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+    }
+
+    select {
+      width: 100%;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 14px;
+      color: var(--text-main);
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.3s;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+
+    select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+    }
+
+    select option {
+      background: #1e293b;
+      color: var(--text-main);
+    }
+
+    /* Camera and Scanner boxes */
+    .scanner-viewport,
+    .camera-viewport {
+      width: 100%;
+      aspect-ratio: 4/3;
+      background: #090d16;
+      border-radius: 16px;
+      overflow: hidden;
+      position: relative;
+      border: 2px dashed rgba(255, 255, 255, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+
+    #reader {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    .scanner-viewport video,
+    .camera-viewport video,
+    #reader video {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover !important;
+    }
+
+    /* Visual scanner overlay guide */
+    .qr-scan-guide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .qr-guide-box {
+      width: 80%;
+      height: 80%;
+      position: relative;
+      box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.45);
+      border-radius: 16px;
+    }
+
+    .scan-corner {
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      border-color: #818cf8;
+      border-style: solid;
+    }
+
+    .scan-corner.top-left {
+      top: -2px;
+      left: -2px;
+      border-width: 4px 0 0 4px;
+      border-top-left-radius: 12px;
+    }
+
+    .scan-corner.top-right {
+      top: -2px;
+      right: -2px;
+      border-width: 4px 4px 0 0;
+      border-top-right-radius: 12px;
+    }
+
+    .scan-corner.bottom-left {
+      bottom: -2px;
+      left: -2px;
+      border-width: 0 0 4px 4px;
+      border-bottom-left-radius: 12px;
+    }
+
+    .scan-corner.bottom-right {
+      bottom: -2px;
+      right: -2px;
+      border-width: 0 4px 4px 0;
+      border-bottom-right-radius: 12px;
+    }
+
+    .scan-line {
+      position: absolute;
+      top: 0;
+      left: 5%;
+      width: 90%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #818cf8, #c084fc, transparent);
+      box-shadow: 0 0 10px #818cf8;
+      animation: scanAnim 2s ease-in-out infinite;
+    }
+
+    @keyframes scanAnim {
+      0% {
+        top: 5%;
+      }
+
+      50% {
+        top: 90%;
+      }
+
+      100% {
+        top: 5%;
+      }
+    }
+
+    /* Face indicator overlays */
+    .face-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      border: 2px solid transparent;
+      border-radius: 16px;
+      box-shadow: inset 0 0 0 200px rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .face-guide-oval {
+      width: 60%;
+      height: 75%;
+      border: 2px dashed rgba(255, 255, 255, 0.6);
+      border-radius: 50%;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.2);
+      transition: border-color 0.3s;
+    }
+
+    .face-guide-oval.verified {
+      border-color: var(--success);
+      border-style: solid;
+    }
+
+    /* Buttons */
+    .btn {
+      width: 100%;
+      background: var(--primary);
+      color: var(--text-main);
+      border: none;
+      padding: 14px;
+      font-size: 1rem;
+      font-weight: 600;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn:hover {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    .btn:disabled,
+    .btn-secondary:disabled {
+      background: transparent !important;
+      color: rgba(255, 255, 255, 0.4) !important;
+      border: 1px solid rgba(255, 255, 255, 0.15) !important;
+      cursor: not-allowed !important;
+      pointer-events: none !important;
+      transform: none !important;
+      opacity: 0.6 !important;
+      box-shadow: none !important;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.08) !important;
+      color: var(--text-muted) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      box-shadow: none !important;
+    }
+
+    .btn-danger {
+      background: var(--danger) !important;
+      color: white !important;
+    }
+
+    .btn-danger:hover {
+      background: #dc2626 !important;
+    }
+
+    .btn-success {
+      background: var(--success) !important;
+      color: white !important;
+    }
+
+    .btn-success:hover {
+      background: #059669 !important;
+    }
+
+    .btn-warning {
+      background: var(--warning) !important;
+      color: #0f172a !important;
+    }
+
+    .btn-warning:hover {
+      background: #d97706 !important;
+    }
+
+    /* Statuses and Alerts */
+    .status-banner {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 99px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      animation: fadeIn 0.3s ease;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .status-banner.offline {
+      background: rgba(245, 158, 11, 0.18);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      color: #fbbf24;
+    }
+
+    .status-banner.online {
+      background: rgba(16, 185, 129, 0.18);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      color: #34d399;
+    }
+
+    .status-banner .indicator {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .status-banner.online .indicator {
+      background: #10b981;
+      box-shadow: 0 0 6px #10b981;
+    }
+
+    .status-banner.offline .indicator {
+      background: #f59e0b;
+      box-shadow: 0 0 6px #f59e0b;
+    }
+
+    .feedback-message {
+      padding: 12px;
+      border-radius: 10px;
+      margin-top: 15px;
+      font-size: 0.9rem;
+      text-align: center;
+      display: none;
+    }
+
+    .feedback-success {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      display: block;
+    }
+
+    .feedback-error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      color: #f87171;
+      display: block;
+    }
+
+    .feedback-warning {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+      color: #fbbf24;
+      display: block;
+    }
+
+    .feedback-info {
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      color: #818cf8;
+      display: block;
+    }
+
+    .challenge-prompt {
+      position: absolute;
+      bottom: 15px;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid var(--primary);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #818cf8;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      display: none;
+      z-index: 10;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% {
+        transform: scale(1);
+      }
+
+      50% {
+        transform: scale(1.05);
+      }
+
+      100% {
+        transform: scale(1);
+      }
+    }
+
+    /* Offline log badge */
+    .offline-count {
+      display: inline-block;
+      background: var(--warning);
+      color: #0f172a;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 10px;
+      margin-left: 6px;
+    }
+
+    /* Loading overlay */
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(15, 23, 42, 0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+
+    .spinner {
+      border: 4px solid rgba(255, 255, 255, 0.1);
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      border-left-color: var(--primary);
+      animation: spin 1s linear infinite;
+      margin-bottom: 16px;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* Overlay & Modal Card for Sync NRP */
+    .overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(15, 23, 42, 0.95);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .modal-card {
+      background: #1e293b;
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      padding: 28px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+      animation: fadeIn 0.3s ease;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    /* 2x2 Menu Grid for Langkah 3 */
+    .menu-grid-2x2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-top: 12px;
+      margin-bottom: 20px;
+    }
+
+    .menu-card {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      padding: 18px 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      text-align: center;
+      user-select: none;
+      outline: none;
+      width: 100%;
+      border: none;
+      color: var(--text-main);
+    }
+
+    .menu-card:hover {
+      transform: translateY(-3px);
+      border-color: rgba(255, 255, 255, 0.25);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+    }
+
+    .menu-card:active {
+      transform: translateY(1px);
+    }
+
+    .menu-card.clock-in {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.18) 0%, rgba(15, 23, 42, 0.7) 100%);
+      border-color: rgba(16, 185, 129, 0.4);
+    }
+
+    .menu-card.clock-in:hover {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.3) 0%, rgba(15, 23, 42, 0.8) 100%);
+      border-color: rgba(16, 185, 129, 0.7);
+      box-shadow: 0 10px 25px rgba(16, 185, 129, 0.25);
+    }
+
+    .menu-card.start-break {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.18) 0%, rgba(15, 23, 42, 0.7) 100%);
+      border-color: rgba(245, 158, 11, 0.4);
+    }
+
+    .menu-card.start-break:hover {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.3) 0%, rgba(15, 23, 42, 0.8) 100%);
+      border-color: rgba(245, 158, 11, 0.7);
+      box-shadow: 0 10px 25px rgba(245, 158, 11, 0.25);
+    }
+
+    .menu-card.stop-break {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.18) 0%, rgba(15, 23, 42, 0.7) 100%);
+      border-color: rgba(99, 102, 241, 0.4);
+    }
+
+    .menu-card.stop-break:hover {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.3) 0%, rgba(15, 23, 42, 0.8) 100%);
+      border-color: rgba(99, 102, 241, 0.7);
+      box-shadow: 0 10px 25px rgba(99, 102, 241, 0.25);
+    }
+
+    .menu-card.clock-out {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.18) 0%, rgba(15, 23, 42, 0.7) 100%);
+      border-color: rgba(239, 68, 68, 0.4);
+    }
+
+    .menu-card.clock-out:hover {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.3) 0%, rgba(15, 23, 42, 0.8) 100%);
+      border-color: rgba(239, 68, 68, 0.7);
+      box-shadow: 0 10px 25px rgba(239, 68, 68, 0.25);
+    }
+
+    .menu-icon {
+      font-size: 2rem;
+      margin-bottom: 8px;
+    }
+
+    .menu-title {
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: var(--text-main);
+    }
+
+    .menu-sub {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.3);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--primary);
+      border-radius: 4px;
+    }
+
+    /* Debug Panel */
+    #debugPanel .modal-card {
+      max-width: 550px;
+      width: 95%;
+      text-align: left;
+      background: #0f172a;
+      border: 1px solid rgba(129, 140, 248, 0.4);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+    }
+
+    #debugPanel .modal-card h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #818cf8;
+      margin: 0;
+    }
+
+    .debug-log-area {
+      background: #020617;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 10px;
+      font-family: monospace;
+      font-size: 0.75rem;
+      color: #38bdf8;
+      max-height: 220px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* Responsive */
+    @media (max-width: 480px) {
+      body {
+        padding: 10px;
+      }
+
+      .container {
+        padding: 16px;
+      }
+
+      .menu-grid-2x2 {
+        gap: 10px;
+      }
+
+      .menu-card {
+        padding: 14px 8px;
+      }
+
+      .menu-icon {
+        font-size: 1.5rem;
+      }
+
+      .menu-title {
+        font-size: 0.9rem;
+      }
+
+      .modal-card {
+        padding: 20px;
+        margin: 10px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Loading screen for initializing face-api models -->
+  <div id="loadingOverlay" class="loading-overlay">
+    <div class="spinner" id="loadingSpinner"></div>
+    <h3 id="loadingOverlayTitle" style="font-weight: 600;">Mengunduh Model AI Wajah...</h3>
+    <p id="loadingOverlayText"
+      style="color: var(--text-muted); font-size: 0.85rem; margin-top: 6px; max-width: 300px; text-align: center;">
+      Proses ini memakan waktu beberapa detik pada pembukaan pertama.
+    </p>
+    <div id="loadingOverlayErrBox" style="display: none; margin-top: 12px; text-align: center;"></div>
+  </div>
+
+  <header
+    style="padding: 16px 16px 8px 16px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 4px;">
+    <div style="display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;">
+      <h1
+        style="font-size: 1.5rem; font-weight: 800; margin: 0; background: linear-gradient(135deg, #a5b4fc 0%, #818cf8 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">
+        Smart Attendance</h1>
+      <div id="statusBanner" class="status-banner online" title="Status Jaringan Server Cloud">
+        <span class="indicator"></span>
+        <span id="statusText">Online</span>
+      </div>
+    </div>
+    <p style="font-size: 0.8rem; color: #94a3b8; margin: 0;">Sistem Absensi QR Code & Verifikasi Wajah</p>
+  </header>
+
+  <div class="container">
+
+    <!-- User Profile Header Banner (Auto-Identified by Device ID) -->
+    <div id="userHeaderBanner"
+      style="display: none; margin-bottom: 16px; background: rgba(30, 41, 59, 0.85); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 12px 16px; text-align: left; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-size: 1.05rem; font-weight: 700; color: #f8fafc; line-height: 1.3; word-break: break-word;"
+            id="userNameText">👋 Loading...</div>
+        </div>
+        <div style="flex-shrink: 0;">
+          <button type="button" id="spvHeaderBtn" onclick="openSupervisorOverlay()"
+            style="display: none; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; border: 1px solid rgba(255,255,255,0.25); border-radius: 20px; font-size: 0.75rem; font-weight: 700; padding: 6px 12px; align-items: center; gap: 6px; box-shadow: 0 3px 10px rgba(99,102,241,0.4); cursor: pointer; white-space: nowrap;">
+            <span>📋 Approval</span>
+            <span id="spvHeaderBadge"
+              style="background: #ef4444; color: white; font-size: 0.68rem; font-weight: 800; padding: 1px 6px; border-radius: 99px;">0</span>
+          </button>
+        </div>
+      </div>
+      <div
+        style="font-size: 0.78rem; color: #cbd5e1; margin-top: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+          <span>NRP: <strong id="userNrpVal">-</strong></span>
+          <span>Posisi: <strong id="userPosVal">-</strong></span>
+          <span>Outlet: <strong id="userOutletVal">-</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab Bar -->
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchView('scan')">Scan Absen</button>
+      <button class="tab-btn" onclick="switchView('register')">
+        Registrasi <span id="offlineBadge" class="offline-count" style="display:none;">0</span>
+      </button>
+      <button class="tab-btn" onclick="switchView('am')">👔 AM</button>
+    </div>
+
+    <!-- VIEW 1: SCAN ABSENSI (DEFAULT) -->
+    <div id="viewScan" class="view-screen active">
+      <div id="scanStep1">
+        <div class="step-label">Langkah 1: Scan QR Code di Monitor PC</div>
+        <div class="scanner-viewport">
+          <div id="reader"></div>
+          <div class="qr-scan-guide">
+            <div class="qr-guide-box">
+              <div class="scan-corner top-left"></div>
+              <div class="scan-corner top-right"></div>
+              <div class="scan-corner bottom-left"></div>
+              <div class="scan-corner bottom-right"></div>
+              <div class="scan-line"></div>
+            </div>
+          </div>
+        </div>
+        <p
+          style="font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-top:-10px; margin-bottom: 10px;">
+          Posisikan QR Code di dalam kotak scanner
+        </p>
+        <div style="margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;">
+          <button type="button" class="btn btn-secondary" id="tugasLuarBtn" onclick="openTugasLuarModal()"
+            style="width: 100%; font-size: 0.85rem; padding: 12px; border-radius: 10px; background: rgba(99, 102, 241, 0.15) !important; color: #a5b4fc !important; border: 1px solid rgba(99, 102, 241, 0.35) !important;">
+            📌 Absen Tugas Luar
+          </button>
+          <button type="button" onclick="showDebugPanel(true)" style="display: none;">
+            🐞 Tampilkan Debug Info / Detail Error
+          </button>
+        </div>
+      </div>
+
+      <div id="scanStep2" style="display: none; position: relative;">
+        <div class="step-label">Langkah 2: Verifikasi Wajah & Keaktifan (Tersenyum 😊)</div>
+        <div class="camera-viewport">
+          <video id="scanFaceVideo" autoplay muted playsinline></video>
+          <div class="face-overlay">
+            <div id="faceGuide" class="face-guide-oval"></div>
+          </div>
+          <!-- Challenge notification -->
+          <div id="challengeText" class="challenge-prompt">Memuat pendeteksi...</div>
+        </div>
+        <button id="btnCancelScan" class="btn btn-secondary" onclick="cancelScan()">Batal</button>
+      </div>
+
+      <div id="scanStep3" style="display: none; position: relative;">
+        <div class="step-label">Langkah 3: Pilih Menu Absensi</div>
+
+        <div class="menu-grid-2x2" style="margin-top: 14px;">
+          <button type="button" class="menu-card clock-in" onclick="handleClockInClick()">
+            <div class="menu-icon">🟢</div>
+            <div class="menu-title">Masuk Kerja</div>
+          </button>
+          <button type="button" class="menu-card start-break" onclick="submitAttendance('START_BREAK')">
+            <div class="menu-icon">☕</div>
+            <div class="menu-title">Mulai Istirahat</div>
+          </button>
+          <button type="button" class="menu-card stop-break" onclick="submitAttendance('STOP_BREAK')">
+            <div class="menu-icon">🔄</div>
+            <div class="menu-title">Selesai Istirahat</div>
+          </button>
+          <button type="button" class="menu-card clock-out" onclick="handleClockOutClick()">
+            <div class="menu-icon">🔴</div>
+            <div class="menu-title">Pulang Kerja</div>
+          </button>
+        </div>
+
+        <button id="btnCancelScan3" class="btn btn-secondary" onclick="cancelScan()" style="margin-top: 14px;">Batal
+          Scan</button>
+      </div>
+    </div>
+
+    <!-- VIEW 2: REGISTRASI WAJAH KARYAWAN -->
+    <div id="viewRegister" class="view-screen">
+      <div class="form-group">
+        <label for="regNRP">Nomor Registrasi Pegawai (NRP)</label>
+        <input type="text" id="regNRP" placeholder="Masukkan NRP Anda">
+      </div>
+
+      <div id="registerCameraArea" style="display:none;">
+        <div class="step-label">Pendaftaran Sampel Wajah (Kamera Depan)</div>
+        <div class="camera-viewport">
+          <video id="regFaceVideo" autoplay muted playsinline></video>
+          <div class="face-overlay">
+            <div class="face-guide-oval"></div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+          <button id="btnCapturePhoto" class="btn"
+            onclick="this.style.display='none'; this.disabled=true; captureFaceEmbeddings(this);">Ambil Foto</button>
+          <button class="btn btn-secondary" style="flex:0.5;" onclick="stopRegistrationCamera()">Batal</button>
+        </div>
+
+        <div id="regProgress"
+          style="font-size:0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 10px;">
+          Posisikan wajah Anda di dalam bidang oval lalu tekan tombol <strong>Ambil Foto</strong>.
+        </div>
+      </div>
+
+      <button id="btnStartReg" class="btn" onclick="startRegistrationFlow()">Mulai Registrasi</button>
+      <div id="regResult" class="feedback-message"></div>
+
+      <!-- Container Request Unbind HP (Di dalam Tab Registrasi) -->
+      <div
+        style="margin-top: 20px; padding-top: 16px; border-top: 1px dashed rgba(255,255,255,0.15); text-align: center;">
+        <p style="font-size: 0.83rem; color: var(--text-muted); margin-bottom: 8px;">Ganti HP baru atau perangkat belum
+          di-unbind?</p>
+        <button type="button" class="btn btn-secondary" onclick="openUnbindOverlay()"
+          style="font-size: 0.85rem; padding: 10px 14px; width: 100%; border-color: rgba(239, 68, 68, 0.4); color: #ef4444;">
+          📱 Request Unbind HP / Ganti Perangkat
+        </button>
+      </div>
+    </div>
+
+    <!-- VIEW 3: PANEL LOGIN & APPROVAL AREA MANAGER -->
+    <div id="viewAm" class="view-screen">
+      <h2
+        style="font-size: 1.25rem; font-weight: 700; margin-bottom: 4px; text-align: center; color: var(--text-main);">
+        👔 Panel Area Manager
+      </h2>
+      <p style="font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-bottom: 16px;">
+        Pilih Nama Area Manager & PIN Passcode untuk mengakses Panel Approval.
+      </p>
+
+      <div id="amLoginForm"
+        style="display: flex; flex-direction: column; gap: 14px; text-align: left; margin-bottom: 20px;">
+        <div>
+          <label for="amSelectName" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Nama Area
+            Manager</label>
+          <select id="amSelectName"
+            style="width: 100%; margin-top: 4px; padding: 11px 14px; border-radius: 10px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.2); color: #f8fafc; font-weight: 600; font-size: 0.95rem;">
+            <option value="">-- Memuat daftar AM... --</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="amPinInput" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">PIN Passcode
+            Area
+            Manager</label>
+          <input type="password" id="amPinInput" placeholder="Masukkan PIN (Default: 1234)"
+            style="width: 100%; margin-top: 4px; padding: 11px 14px; border-radius: 10px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.2); color: #f8fafc; font-weight: 600; letter-spacing: 2px;">
+        </div>
+
+        <button class="btn btn-primary" onclick="submitAmLogin()"
+          style="font-weight: 700; background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; padding: 14px; border-radius: 12px; border: none; cursor: pointer;">🚀
+          Login & Buka Approval</button>
+      </div>
+
+      <div id="amLoggedInArea" style="display: none;">
+        <div
+          style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 12px; padding: 10px 14px;">
+          <div>
+            <div id="amLoggedInName" style="font-size: 0.95rem; color: #fbbf24; font-weight: 700;">👋 Halo Area Manager
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">Sesi Login Aktif</div>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn btn-secondary" onclick="openChangePinModal()"
+              style="font-size: 0.75rem; padding: 6px 10px; width: auto;">🔐 Ubah PIN</button>
+            <button class="btn btn-secondary" onclick="logoutAmSession()"
+              style="font-size: 0.75rem; padding: 6px 10px; width: auto; color: #ef4444 !important; border-color: rgba(239,68,68,0.4) !important;">🚪
+              Logout</button>
+          </div>
+        </div>
+        <div id="amPendingListTabContainer"
+          style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; max-height: 380px; overflow-y: auto;">
+          <!-- Card pengajuan approval AM -->
+        </div>
+      </div>
+    </div>
+
+    <div id="scanResult" class="feedback-message"></div>
+  </div>
+
+  <!-- Sync NRP Modal (Diberikan bila di-scan di browser baru yang belum diregistrasi) -->
+  <div class="overlay" id="syncNrpOverlay" style="display: none;">
+    <div class="modal-card">
+      <h2 style="font-size: 1.4rem; font-weight: 700; margin-bottom: 16px; text-align: center;">Sinkronisasi Profil
+        Wajah</h2>
+      <p style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 20px;">
+        Ponsel ini belum terhubung. Masukkan NRP Anda untuk mengunduh sampel wajah yang sudah terdaftar di cloud.
+      </p>
+      <div class="form-group">
+        <label for="syncNRP">Nomor Registrasi Pegawai (NRP)</label>
+        <input type="text" id="syncNRP" placeholder="Contoh: SNI*******">
+      </div>
+      <button type="button" class="btn btn-secondary" onclick="goToRegistrationFromOverlay()"
+        style="margin-bottom: 10px; border-color: rgba(99, 102, 241, 0.4); color: var(--text-main);">
+        📝 Belum Terdaftar? Ke Tab Registrasi
+      </button>
+      <button type="button" class="btn btn-secondary" id="tugasLuarSyncBtn" onclick="openTugasLuarModal()"
+        style="margin-bottom: 6px; background: rgba(99, 102, 241, 0.15) !important; color: #a5b4fc !important; border: 1px solid rgba(99, 102, 241, 0.35) !important;">
+        📌 Absen Tugas Luar (Tanpa QR)
+      </button>
+      <button type="button" onclick="showDebugPanel(true)" style="display: none;">
+        🐞 Tampilkan Debug Info / Detail Error
+      </button>
+      <button id="btnSyncProfile" class="btn btn-secondary" onclick="syncFaceProfile(this)"
+        style="margin-bottom: 10px;">Sinkronkan Perangkat</button>
+      <button type="button" class="btn btn-secondary" onclick="openUnbindOverlay()"
+        style="margin-bottom: 10px; border-color: rgba(239, 68, 68, 0.4); color: #ef4444;">
+        📱 Ganti HP Baru? Minta Reset Device
+      </button>
+      <button class="btn btn-secondary" onclick="closeSyncOverlay()">Batal</button>
+      <div id="syncResult" class="feedback-message" style="margin-top: 10px;"></div>
+    </div>
+  </div>
+
+  <!-- Unbind Device Request Modal (Minta Unbind / Reset Device HP Baru) -->
+  <div class="overlay" id="unbindDeviceOverlay" style="display: none;">
+    <div class="modal-card">
+      <h2
+        style="font-size: 1.3rem; font-weight: 700; margin-bottom: 10px; text-align: center; color: var(--text-main);">
+        📱 Permintaan Unbind Device
+      </h2>
+      <p style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 18px;">
+        Ganti HP baru atau perangkat terikat? Masukkan NRP Anda untuk mengajukan reset perangkat ke HR Admin.
+      </p>
+      <div class="form-group">
+        <label for="unbindNRP">Nomor Registrasi Pegawai (NRP)</label>
+        <input type="text" id="unbindNRP" placeholder="Contoh: SNI*******">
+      </div>
+      <div class="form-group">
+        <label for="unbindReason">Alasan Pengajuan</label>
+        <select id="unbindReason"
+          style="width: 100%; padding: 10px; border-radius: 8px; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color);">
+          <option value="Ganti HP / Smartphone Baru">Ganti HP / Smartphone Baru</option>
+          <option value="Perangkat HP Rusak / Hilang">Perangkat HP Rusak / Hilang</option>
+          <option value="Device ID Reset / Re-install PWA">Device ID Reset / Re-install PWA</option>
+          <option value="Lainnya">Lainnya</option>
+        </select>
+      </div>
+      <button id="btnSendUnbind" class="btn" onclick="sendUnbindDeviceRequest(this)"
+        style="margin-bottom: 10px; background: #ef4444; color: white;">
+        🚀 Kirim Permintaan Unbind
+      </button>
+      <button class="btn btn-secondary" onclick="closeUnbindOverlay()">Batal</button>
+      <div id="unbindResult" class="feedback-message" style="margin-top: 10px;"></div>
+    </div>
+  </div>
+
+  <!-- Shift Selection Modal (Pilih Shift Jam Kerja saat Clock In) -->
+  <div class="overlay" id="shiftSelectOverlay" style="display: none;">
+    <div class="modal-card">
+      <h2 style="font-size: 1.3rem; font-weight: 700; margin-bottom: 8px; text-align: center; color: var(--text-main);">
+        📋 Pilih Shift Kerja
+      </h2>
+      <p id="shiftOutletName"
+        style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 20px;">
+        Pilih opsi jam kerja untuk outlet Anda
+      </p>
+      <div id="shiftOptionsContainer"
+        style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; max-height: 250px; overflow-y: auto;">
+        <!-- Shift options added dynamically -->
+      </div>
+      <button class="btn btn-secondary" onclick="closeShiftOverlay()">Batal</button>
+    </div>
+  </div>
+
+  <!-- Reason Selection Modal (Pilih Kategori / Alasan Absen) -->
+  <div class="overlay" id="reasonSelectOverlay" style="display: none;">
+    <div class="modal-card">
+      <h2 id="reasonModalTitle"
+        style="font-size: 1.2rem; font-weight: 700; margin-bottom: 8px; text-align: center; color: var(--text-main);">
+        📋 Pilih Kategori / Alasan
+      </h2>
+      <p id="reasonModalSub"
+        style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 16px;">
+        Pilih opsi kategori absensi jika sesuai (opsional)
+      </p>
+      <div id="reasonOptionsContainer"
+        style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; max-height: 250px; overflow-y: auto;">
+        <!-- Dynamic reason options -->
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <button id="btnSkipReason" class="btn" onclick="skipReasonAndSubmit()"
+          style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: var(--text-main); font-weight: 600;">
+          ⏩ Lanjutkan Tanpa Kategori
+        </button>
+        <button class="btn btn-secondary" onclick="closeReasonOverlay()">Batal</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Supervisor Approval Modal -->
+  <div class="overlay" id="supervisorApprovalOverlay" style="display: none;">
+    <div class="modal-card" style="max-width: 480px; width: 92%;">
+      <h2 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 4px; text-align: center; color: var(--text-main);">
+        📋 Persetujuan Absensi Staff
+      </h2>
+      <p id="spvModalSubtitle"
+        style="font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-bottom: 16px;">
+        Memuat data pengajuan...
+      </p>
+      <div id="spvPendingListContainer"
+        style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; max-height: 350px; overflow-y: auto;">
+        <!-- Dynamic pending approval cards -->
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn" onclick="checkSupervisorRole(true)"
+          style="flex: 1; background: rgba(255,255,255,0.1); font-size: 0.85rem;">🔄 Refresh</button>
+        <button class="btn" id="amChangePinBtn" onclick="openChangePinModal()"
+          style="flex: 1; background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); font-size: 0.85rem; display: none;">🔐
+          Ubah PIN</button>
+        <button class="btn btn-secondary" onclick="closeSupervisorOverlay()"
+          style="flex: 1; font-size: 0.85rem;">Tutup</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Unbind Pending Overlay: Menunggu Persetujuan HR -->
+  <div id="unbindPendingOverlay" style="
+    display: none;
+    position: fixed; inset: 0; z-index: 9999;
+    background: rgba(0, 0, 0, 0.92);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 24px;
+    text-align: center;
+    backdrop-filter: blur(12px);
+  ">
+    <div style="
+      background: linear-gradient(145deg, #1a1a2e, #16213e);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      border-radius: 24px;
+      padding: 40px 28px;
+      max-width: 380px;
+      width: 100%;
+      box-shadow: 0 0 60px rgba(245, 158, 11, 0.15);
+    ">
+      <!-- Animated icon -->
+      <div id="unbindPendingIcon" style="
+        font-size: 4rem;
+        margin-bottom: 20px;
+        display: inline-block;
+        animation: pendingPulse 2s ease-in-out infinite;
+      ">⏳</div>
+
+      <h2 style="
+        font-size: 1.4rem; font-weight: 700;
+        color: #f59e0b;
+        margin-bottom: 12px;
+      " id="unbindPendingTitle">Menunggu Persetujuan HR</h2>
+
+      <p style="
+        font-size: 0.92rem;
+        color: rgba(255,255,255,0.75);
+        line-height: 1.6;
+        margin-bottom: 20px;
+      " id="unbindPendingMsg">
+        Permintaan penggantian perangkat Anda sedang dalam proses review oleh HR Admin.<br><br>
+        Anda tidak dapat melakukan absensi selama menunggu persetujuan.
+      </p>
+
+      <div style="
+        background: rgba(245, 158, 11, 0.1);
+        border: 1px solid rgba(245, 158, 11, 0.25);
+        border-radius: 12px;
+        padding: 14px 16px;
+        font-size: 0.82rem;
+        color: rgba(255,255,255,0.6);
+        margin-bottom: 24px;
+      ">
+        💡 Silakan hubungi HR Admin untuk mempercepat proses persetujuan.
+      </div>
+
+      <div id="unbindPendingNrpInfo" style="
+        font-size: 0.78rem;
+        color: rgba(255,255,255,0.4);
+        margin-bottom: 20px;
+      "></div>
+
+      <!-- Retry check button -->
+      <button onclick="retryUnbindStatusCheck()" style="
+        width: 100%;
+        padding: 14px;
+        border-radius: 12px;
+        border: none;
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+        color: #000;
+        font-weight: 700;
+        font-size: 0.95rem;
+        cursor: pointer;
+        margin-bottom: 10px;
+      ">🔄 Cek Status Ulang</button>
+    </div>
+  </div>
+
+  <!-- Area Manager Login Modal -->
+  <div class="overlay" id="amLoginModalOverlay" style="display: none;">
+    <div class="modal-card" style="max-width: 440px; width: 92%;">
+      <h2
+        style="font-size: 1.25rem; font-weight: 700; margin-bottom: 4px; text-align: center; color: var(--text-main);">
+        👔 Login Area Manager
+      </h2>
+      <p style="font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-bottom: 16px;">
+        Pilih Nama Area Manager dan masukkan PIN Passcode untuk mengakses Panel Approval.
+      </p>
+
+      <div style="display: flex; flex-direction: column; gap: 14px; text-align: left; margin-bottom: 20px;">
+        <div>
+          <label for="amModalSelectName" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Nama
+            Area Manager</label>
+          <select id="amModalSelectName"
+            style="width: 100%; margin-top: 4px; padding: 11px 14px; border-radius: 10px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.2); color: #f8fafc; font-weight: 600; font-size: 0.95rem;">
+            <option value="">-- Memuat daftar AM... --</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="amModalPinInput" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">PIN
+            Passcode Area
+            Manager</label>
+          <input type="password" id="amModalPinInput" placeholder="Masukkan PIN (Default: 1234)"
+            style="width: 100%; margin-top: 4px; padding: 11px 14px; border-radius: 10px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.2); color: #f8fafc; font-weight: 600; letter-spacing: 2px;">
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px;">
+        <button class="btn btn-primary" onclick="submitAmLogin()" style="flex: 1; font-weight: 700;">🚀 Login & Buka
+          Approval</button>
+        <button class="btn btn-secondary" onclick="closeAmLoginModal()" style="flex: 1;">Batal</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Change PIN Modal for Area Manager -->
+  <div class="overlay" id="changePinModalOverlay" style="display: none;">
+    <div class="modal-card" style="max-width: 420px; width: 92%;">
+      <h2 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 4px; text-align: center; color: var(--text-main);">
+        🔐 Ubah PIN Passcode Area Manager
+      </h2>
+      <p id="changePinSubText"
+        style="font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-bottom: 16px;">
+        Masukkan PIN lama Anda dan tentukan PIN baru (minimal 4 digit).
+      </p>
+
+      <div style="display: flex; flex-direction: column; gap: 12px; text-align: left; margin-bottom: 20px;">
+        <div>
+          <label for="oldPinInput" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">PIN Lama Saat
+            Ini</label>
+          <input type="password" id="oldPinInput" placeholder="Masukkan PIN lama"
+            style="width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: 8px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.2); color: #f8fafc; font-weight: 600;">
+        </div>
+
+        <div>
+          <label for="newPinInput" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">PIN Baru (Min.
+            4
+            Digit)</label>
+          <input type="password" id="newPinInput" placeholder="Masukkan PIN baru"
+            style="width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: 8px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.2); color: #f8fafc; font-weight: 600;">
+        </div>
+
+        <div>
+          <label for="confirmNewPinInput"
+            style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Konfirmasi PIN Baru</label>
+          <input type="password" id="confirmNewPinInput" placeholder="Ulangi PIN baru"
+            style="width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: 8px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.2); color: #f8fafc; font-weight: 600;">
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px;">
+        <button class="btn btn-primary" onclick="submitChangeAmPin()" style="flex: 1; font-weight: 700;">💾 Simpan
+          PIN Baru</button>
+        <button class="btn btn-secondary" id="cancelChangePinBtn" onclick="closeChangePinModal()"
+          style="flex: 1;">Batal</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Debug & Error Detail Panel Modal -->
+  <div id="debugPanel" class="overlay" style="display: none; z-index: 10000;">
+    <div class="modal-card"
+      style="max-width: 550px; width: 95%; text-align: left; background: #0f172a; border: 1px solid rgba(129, 140, 248, 0.4); box-shadow: 0 10px 40px rgba(0,0,0,0.8);">
+      <div
+        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
+        <h3 style="font-size: 1.1rem; font-weight: 700; color: #818cf8; margin: 0;">🐞 Debug Panel & Detail Error</h3>
+        <button type="button" onclick="closeDebugPanel()"
+          style="background: transparent; border: none; color: #94a3b8; font-size: 1.2rem; cursor: pointer;">✕</button>
+      </div>
+
+      <div
+        style="font-size: 0.8rem; color: #cbd5e1; display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; background: rgba(30, 41, 59, 0.7); padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+        <div id="dbgTimestamp">⏱ Waktu klik: -</div>
+        <div id="dbgNRP">👤 NRP tersimpan: -</div>
+        <div id="dbgTugasLuarState">📌 Tugas Luar Mode: Non-Aktif</div>
+        <div id="dbgScannedQR">📦 scannedQRData: null</div>
+        <div id="dbgModelsLoaded">🤖 AI Models Loaded: false</div>
+        <div id="dbgOnlineStatus">🌐 Sinyal Internet: Online</div>
+        <div id="dbgIsProcessing">🔒 isProcessingQRScan: false</div>
+        <div id="dbgIsRestarting">🔄 isRestartingScanner: false</div>
+        <div id="dbgScannerState">📷 html5QrcodeScanner: null</div>
+        <div id="dbgCameraState">🎥 scanStream: null</div>
+        <div id="dbgReaderEl">🗂 #reader children: -</div>
+      </div>
+
+      <div
+        style="margin-bottom: 8px; font-weight: 600; font-size: 0.82rem; color: #a5b4fc; display: flex; justify-content: space-between; align-items: center;">
+        <span>📜 Execution & Error Log:</span>
+        <button type="button" onclick="copyDebugLog()"
+          style="background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); color: #c7d2fe; font-size: 0.75rem; padding: 3px 8px; border-radius: 4px; cursor: pointer;">📋
+          Salin Log</button>
+      </div>
+      <div id="dbgLog" class="debug-log-area">(Belum ada log)</div>
+
+      <div style="display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap;">
+        <button type="button" class="btn" onclick="forceAppUpdateAndClearCache()"
+          style="flex: 1; font-size: 0.85rem; background: #4f46e5;">🔄 Perbarui PWA / Clear Cache</button>
+        <button type="button" class="btn btn-secondary" onclick="closeDebugPanel()"
+          style="flex: 1; font-size: 0.85rem;">Tutup Debug</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Form Absen Event / Tugas Luar -->
+  <div id="tugasLuarOverlay" class="overlay" style="display: none; z-index: 10001;">
+    <div class="modal-card">
+      <h3 style="font-size: 1.2rem; font-weight: 700; color: #818cf8; margin-bottom: 8px;">📌 Absen Event / Tugas
+        Luar</h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 18px; line-height: 1.4;">
+        Gunakan fitur ini jika Anda bertugas di luar outlet / event khusus. Pengajuan absensi memerlukan verifikasi
+        wajah &amp; persetujuan Supervisor.
+      </p>
+
+      <div class="form-group" style="text-align: left;">
+        <label for="tugasLuarEventName">Nama Event / Nama Kegiatan *</label>
+        <input type="text" id="tugasLuarEventName" placeholder="Contoh: Food Expo ___" required>
+      </div>
+
+      <!-- Error / Debug Details Box in Modal -->
+      <div id="tugasLuarErrorBox"
+        style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 8px; padding: 10px; margin-top: 10px; font-size: 0.8rem; color: #fca5a5; text-align: left; word-break: break-word;">
+      </div>
+
+      <div style="display: flex; gap: 10px; margin-top: 20px;">
+        <button type="button" class="btn" id="tugasLuarStartBtn" onclick="startTugasLuarScan()"
+          style="flex: 1.2;">Lanjut Verifikasi Wajah
+          📸</button>
+        <button type="button" class="btn btn-secondary" onclick="closeTugasLuarModal()"
+          style="flex: 0.8;">Batal</button>
+      </div>
+
+      <div style="margin-top: 14px; text-align: center;">
+        <button type="button" onclick="showDebugPanel(true)" style="display: none;">
+          🐞 Tampilkan Detail Debug / Log Error
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="pwa_app.js?v=47" type="text/javascript"></script>
+</body>
+
+</html>

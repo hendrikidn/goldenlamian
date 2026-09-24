@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Proposal Teknis & Analisis Arsitektur Migrasi PWA ke VPS Contabo</title>
+<style>
+  @page {
+    size: A4 portrait;
+    margin: 11mm 12mm 11mm 12mm;
+  }
+  
+  * {
+    box-sizing: border-box;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
+    color: #1e293b;
+    background-color: #ffffff;
+    line-height: 1.45;
+    font-size: 9.5pt;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Header Cover */
+  .doc-header {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: #ffffff;
+    padding: 18px 22px;
+    border-radius: 8px;
+    margin-bottom: 14px;
+    border-left: 6px solid #d97706;
+  }
+
+  .badge-tag {
+    display: inline-block;
+    background-color: #d97706;
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    margin-bottom: 6px;
+  }
+
+  .doc-title {
+    font-size: 16pt;
+    font-weight: 800;
+    margin: 0 0 4px 0;
+    letter-spacing: -0.5px;
+    color: #ffffff;
+  }
+
+  .doc-subtitle {
+    font-size: 10pt;
+    color: #cbd5e1;
+    margin: 0;
+    font-weight: 400;
+  }
+
+  .meta-grid {
+    display: flex;
+    gap: 20px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #334155;
+    font-size: 8pt;
+    color: #94a3b8;
+  }
+
+  .meta-grid strong {
+    color: #f1f5f9;
+  }
+
+  /* Headings */
+  h2 {
+    font-size: 11.5pt;
+    font-weight: 700;
+    color: #0f172a;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 4px;
+    margin-top: 14px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+  }
+
+  h2 span.icon {
+    margin-right: 8px;
+    font-size: 12.5pt;
+  }
+
+  h3 {
+    font-size: 10pt;
+    font-weight: 700;
+    color: #1e293b;
+    margin-top: 8px;
+    margin-bottom: 4px;
+  }
+
+  p {
+    margin: 0 0 6px 0;
+    text-align: justify;
+  }
+
+  /* CRITICAL CALLOUT BOX FOR GITHUB TOS */
+  .critical-box {
+    background-color: #fef2f2;
+    border: 2px solid #ef4444;
+    border-left: 8px solid #b91c1c;
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin: 10px 0;
+  }
+
+  .critical-badge {
+    display: inline-block;
+    background-color: #b91c1c;
+    color: #ffffff;
+    font-weight: 800;
+    font-size: 8pt;
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .critical-quote {
+    background-color: #ffffff;
+    border-left: 4px solid #b91c1c;
+    padding: 8px 12px;
+    font-style: italic;
+    font-size: 10pt;
+    font-weight: 600;
+    color: #7f1d1d;
+    margin: 6px 0;
+    border-radius: 0 4px 4px 0;
+    line-height: 1.35;
+  }
+
+  .critical-quote cite {
+    display: block;
+    font-size: 7.5pt;
+    font-weight: 400;
+    color: #991b1b;
+    margin-top: 3px;
+    font-style: normal;
+  }
+
+  .risk-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .risk-card {
+    background-color: #ffffff;
+    border: 1px solid #fca5a5;
+    border-radius: 5px;
+    padding: 8px;
+  }
+
+  .risk-card-title {
+    font-size: 8.5pt;
+    font-weight: 700;
+    color: #991b1b;
+    margin-bottom: 3px;
+  }
+
+  .risk-card p {
+    font-size: 7.5pt;
+    color: #334155;
+    margin: 0;
+    line-height: 1.3;
+  }
+
+  /* PWA Explanatory Box */
+  .pwa-box {
+    background-color: #f0fdfa;
+    border: 1px solid #99f6e4;
+    border-left: 6px solid #0d9488;
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin: 10px 0;
+  }
+
+  .pwa-badge {
+    display: inline-block;
+    background-color: #0d9488;
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 7.5pt;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .pwa-pillars {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .pwa-pillar {
+    background-color: #ffffff;
+    border: 1px solid #ccfbf1;
+    border-radius: 5px;
+    padding: 8px 10px;
+  }
+
+  .pwa-pillar-title {
+    font-size: 8.5pt;
+    font-weight: 700;
+    color: #0f766e;
+    margin-bottom: 3px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .pwa-pillar p {
+    font-size: 7.5pt;
+    color: #334155;
+    margin: 0;
+    line-height: 1.3;
+  }
+
+  /* Architecture Diagram Boxes */
+  .diagram-container {
+    background-color: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 10px;
+    margin: 8px 0;
+  }
+
+  .arch-box {
+    border-radius: 6px;
+    padding: 8px;
+  }
+
+  .arch-box-current {
+    background-color: #fff1f2;
+    border: 1px solid #fecdd3;
+  }
+
+  .arch-box-target {
+    background-color: #f0fdf4;
+    border: 1px solid #bbf7d0;
+  }
+
+  .arch-title {
+    font-size: 9pt;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+
+  .flow-nodes {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin: 6px 0;
+  }
+
+  .node {
+    flex: 1;
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    padding: 6px 4px;
+    text-align: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+
+  .node-title {
+    font-weight: 700;
+    font-size: 8pt;
+    margin-bottom: 2px;
+  }
+
+  .node-desc {
+    font-size: 7pt;
+    color: #64748b;
+    line-height: 1.2;
+  }
+
+  .node-arrow {
+    color: #94a3b8;
+    font-weight: 800;
+    font-size: 11pt;
+    flex-shrink: 0;
+  }
+
+  /* Table styling */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 8pt;
+  }
+
+  th {
+    background-color: #0f172a;
+    color: #ffffff;
+    font-weight: 700;
+    text-align: left;
+    padding: 7px 9px;
+    border: 1px solid #0f172a;
+  }
+
+  td {
+    padding: 6px 9px;
+    border: 1px solid #cbd5e1;
+    vertical-align: top;
+  }
+
+  tr:nth-child(even) td {
+    background-color: #f8fafc;
+  }
+
+  .status-badge-red {
+    display: inline-block;
+    background-color: #fee2e2;
+    color: #991b1b;
+    font-weight: 700;
+    font-size: 7pt;
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid #fca5a5;
+  }
+
+  .status-badge-green {
+    display: inline-block;
+    background-color: #dcfce7;
+    color: #166534;
+    font-weight: 700;
+    font-size: 7pt;
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid #86efac;
+  }
+
+  /* Features Grid */
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin: 6px 0;
+  }
+
+  .info-card {
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid #3b82f6;
+    border-radius: 4px;
+    padding: 8px 10px;
+  }
+
+  .info-card-gold {
+    border-left-color: #d97706;
+  }
+
+  .info-card-green {
+    border-left-color: #10b981;
+  }
+
+  .info-card h4 {
+    margin: 0 0 3px 0;
+    font-size: 8.5pt;
+    color: #0f172a;
+  }
+
+  .info-card p {
+    margin: 0;
+    font-size: 7.5pt;
+    color: #475569;
+    line-height: 1.3;
+  }
+
+  /* Steps list */
+  .roadmap-list {
+    margin: 4px 0;
+    padding-left: 18px;
+    font-size: 8pt;
+  }
+
+  .roadmap-list li {
+    margin-bottom: 4px;
+    line-height: 1.35;
+  }
+
+  .page-break {
+    page-break-after: always;
+    break-after: page;
+  }
+
+  .avoid-break {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+</style>
+</head>
+<body>
+
+  <!-- ==================== HALAMAN 1 ==================== -->
+  <!-- HEADER COVER -->
+  <div class="doc-header">
+    <div class="badge-tag">Dokumen Rekomendasi Arsitektur TI &middot; F&B Enterprise</div>
+    <h1 class="doc-title">PROPOSAL MIGRASI PWA ABSENSI KE VPS CONTABO</h1>
+    <div class="doc-subtitle">Analisis Arsitektur Sistem, Kepatuhan Regulasi Layanan, Pemahaman Teknologi PWA, dan Roadmap Migrasi</div>
+    <div class="meta-grid">
+      <div><strong>Sistem:</strong> Golden Lamian Attendance System</div>
+      <div><strong>Status:</strong> Rekomendasi Kritis (High Priority)</div>
+      <div><strong>Target Server:</strong> VPS Contabo (Debian/Ubuntu)</div>
+    </div>
+  </div>
+
+  <!-- MASALAH UTAMA: PELANGGARAN GITHUB TOS -->
+  <div class="critical-box">
+    <div class="critical-badge">🚨 Masalah Utama &amp; Faktor Paling Kritis Kenapa Harus Pindah</div>
+    
+    <p style="font-size: 9pt; color: #1e293b; margin-bottom: 4px;">
+      Alasan terpenting dan paling mendesak untuk segera memindahkan PWA dari GitHub Pages ke VPS Contabo adalah karena <strong>pelanggaran resmi terhadap Ketentuan Layanan (Terms of Service) GitHub</strong>.
+    </p>
+
+    <div class="critical-quote">
+      &ldquo;GitHub Pages is not intended for or allowed to be used as a free web-hosting service for commercial business... or heavily burdened transactions.&rdquo;
+      <cite>&mdash; Sumber Resmi: <strong>GitHub Pages Usage Limits &amp; Acceptable Use</strong> (docs.github.com)</cite>
+    </div>
+
+    <p style="font-size: 8pt; color: #334155; margin-bottom: 6px;">
+      Sistem absensi Golden Lamian digunakan oleh ratusan hingga ribuan karyawan di puluhan gerai secara komersial dan simultan. Mempertahankan sistem pada GitHub Pages menimbulkan ancaman langsung terhadap keberlangsungan operasional harian:
+    </p>
+
+    <div class="risk-cards">
+      <div class="risk-card">
+        <div class="risk-card-title">1. Risiko Suspensi Sepihak</div>
+        <p>GitHub menjalankan bot otomatis pendeteksi anomali trafik komersial. Repositori atau akses Pages dapat <strong>ditutup / disuspend seketika</strong> tanpa peringatan jika terdeteksi trafik operasional bisnis rutin.</p>
+      </div>
+      <div class="risk-card">
+        <div class="risk-card-title">2. Kelumpuhan Absensi Cabang</div>
+        <p>Bila GitHub Pages dimatikan mendadak saat pergantian shift jam sibuk (07:00, 15:00, 22:00), seluruh karyawan di seluruh outlet <strong>gagal membuka PWA</strong>, menyebabkan kekacauan rekapitulasi data kehadiran.</p>
+      </div>
+      <div class="risk-card">
+        <div class="risk-card-title">3. Pelanggaran Kepatuhan TI</div>
+        <p>Mengoperasikan infrastruktur inti korporasi di atas platform gratisan non-komersial melanggar standar tata kelola TI (<em>IT Governance</em>), audit kepatuhan, serta standar kesinambungan bisnis (<em>Disaster Recovery</em>).</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- PENJELASAN PWA: APA ITU PWA? -->
+  <div class="pwa-box avoid-break">
+    <div class="pwa-badge">📱 Memahami Teknologi: Apa Itu PWA (Progressive Web App)?</div>
+    
+    <p style="font-size: 8.5pt; color: #0f172a; margin-bottom: 6px;">
+      <strong>Progressive Web App (PWA)</strong> adalah teknologi aplikasi web modern yang menggabungkan kemudahan distribusi situs web (akses instan melalui tautan/URL tanpa instalasi via App Store) dengan kapabilitas handal aplikasi native (seperti aplikasi Android/iOS).
+    </p>
+
+    <div class="pwa-pillars">
+      <div class="pwa-pillar">
+        <div class="pwa-pillar-title">⚡ 1. Zero App Store Installation</div>
+        <p>Karyawan tidak perlu mencari atau mengunduh APK besar dari Google Play Store / Apple App Store. Cukup membuka tautan di browser HP, lalu memilih tombol <em>"Install / Add to Home Screen"</em>. Aplikasi langsung terpasang di layar utama HP dalam 2 detik.</p>
+      </div>
+
+      <div class="pwa-pillar">
+        <div class="pwa-pillar-title">🔄 2. Service Worker &amp; Offline-First</div>
+        <p>PWA ditenagai oleh skrip latar belakang (<code>sw.js</code>) yang menyimpan file aplikasi, logika kode, serta model AI wajah ke memori internal HP. Jika outlet berada di <em>blank spot</em> (seperti basement mall), PWA tetap dapat terbuka dan memindai wajah secara offline.</p>
+      </div>
+
+      <div class="pwa-pillar">
+        <div class="pwa-pillar-title">📷 3. Akses Sensor Perangkat Keras</div>
+        <p>PWA dapat mengakses kamera depan untuk verifikasi wajah &amp; deteksi kedipan mata (<em>Eye Aspect Ratio liveness</em>), GPS HP untuk geofencing radius outlet (<em>Haversine</em>), dan penyimpanan lokal (IndexedDB) untuk antrean absen.</p>
+      </div>
+
+      <div class="pwa-pillar">
+        <div class="pwa-pillar-title">🔗 4. Korelasi PWA dengan Server Hosting</div>
+        <p>Saat karyawan pertama kali memasang PWA, browser wajib mengunduh seluruh <em>App Shell</em> dan file model AI biometrik (~7 MB). Kecepatan, stabilitas, dan keandalan web server (seperti Nginx di VPS Contabo) menjadi faktor mutlak keberhasilan instalasi.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- ==================== HALAMAN 2 ==================== -->
+  <!-- SECTION 1: ARSITEKTUR SEBELUM PINDAH -->
+  <div class="avoid-break">
+    <h2><span class="icon">🏛️</span> 1. Arsitektur Sebelum Pindah (Kondisi Eksisting: GitHub Pages)</h2>
+    <p>
+      Pada kondisi eksisting, front-end PWA dan seluruh aset model AI biometrik (~7 MB) diletakkan di GitHub Pages. Karyawan mengunduh aset tersebut dari CDN global GitHub, sementara validasi data diteruskan ke Google Apps Script (GAS) dan Google Sheets.
+    </p>
+
+    <div class="diagram-container">
+      <div class="arch-box arch-box-current">
+        <div class="arch-title" style="color: #991b1b;">Skema Alur Eksisting: GitHub Pages + Google Serverless</div>
+        <div class="flow-nodes">
+          <div class="node">
+            <div class="node-title" style="color: #0f172a;">💻 PC Outlet</div>
+            <div class="node-desc">Generate QR TOTP dinamis offline setiap 15-30 detik</div>
+          </div>
+          <div class="node-arrow">&rarr;</div>
+          <div class="node">
+            <div class="node-title" style="color: #0f172a;">📱 PWA Mobile (HP)</div>
+            <div class="node-desc">Scan QR &amp; Liveness Face Biometric di browser</div>
+          </div>
+          <div class="node-arrow">&larr;</div>
+          <div class="node" style="border: 2px dashed #ef4444; background-color: #fef2f2;">
+            <div class="node-title" style="color: #b91c1c;">🐙 GitHub Pages</div>
+            <div class="node-desc">Hosting Static: index.html, pwa_app.js, sw.js &amp; <strong>Models AI (~7MB)</strong></div>
+          </div>
+          <div class="node-arrow">&rarr;</div>
+          <div class="node">
+            <div class="node-title" style="color: #2563eb;">☁️ Google Apps Script</div>
+            <div class="node-desc">Web App Endpoint (doPost) &amp; Validasi 5 Lapisan</div>
+          </div>
+          <div class="node-arrow">&rarr;</div>
+          <div class="node">
+            <div class="node-title" style="color: #16a34a;">📊 Google Sheets</div>
+            <div class="node-desc">Container-Bound Database Master &amp; Transaksi</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p style="font-size: 8pt; color: #475569;">
+      <strong>Kelemahan Kritis Eksisting:</strong> Selain melanggar ToS GitHub, pengunduhan file model AI biometrik berukuran besar (~7 MB) via CDN publik sering terkena <em>throttling</em> atau <em>routing latency</em> tinggi oleh ISP seluler lokal di Indonesia, menyebabkan layar kamera HP karyawan lambat aktif saat absen.
+    </p>
+  </div>
+
+  <!-- SECTION 2: ARSITEKTUR SESUDAH PINDAH -->
+  <div class="avoid-break" style="margin-top: 14px;">
+    <h2><span class="icon">🚀</span> 2. Arsitektur Sesudah Pindah (Target State: VPS Contabo)</h2>
+    <p>
+      Dengan berpindah ke <strong>VPS Contabo</strong>, aplikasi PWA berada di bawah kendali penuh server mandiri berkinerja tinggi. Web Server <strong>Nginx</strong> melayani PWA dengan protokol modern (HTTP/2), kompresi data (Gzip/Brotli), dan <em>aggressive caching</em> untuk model biometrik AI.
+    </p>
+
+    <div class="diagram-container">
+      <div class="arch-box arch-box-target">
+        <div class="arch-title" style="color: #166534;">Skema Alur Baru: Dedicated VPS Contabo Enterprise Web Server</div>
+        <div class="flow-nodes">
+          <div class="node">
+            <div class="node-title" style="color: #0f172a;">💻 PC Outlet</div>
+            <div class="node-desc">Generate QR TOTP offline mandiri di outlet</div>
+          </div>
+          <div class="node-arrow">&rarr;</div>
+          <div class="node">
+            <div class="node-title" style="color: #0f172a;">📱 PWA Mobile (HP)</div>
+            <div class="node-desc">Fast-load PWA &amp; Instant Biometric AI Caching</div>
+          </div>
+          <div class="node-arrow">&larr;&rarr;</div>
+          <div class="node" style="border: 2px solid #10b981; background-color: #f0fdf4;">
+            <div class="node-title" style="color: #047857;">🏢 VPS Contabo (Nginx)</div>
+            <div class="node-desc"><strong>HTTP/2 Engine + Let's Encrypt SSL</strong><br/>Cache-Control Model AI &amp; Static Host</div>
+          </div>
+          <div class="node-arrow">&rarr;</div>
+          <div class="node">
+            <div class="node-title" style="color: #64748b;">☁️ Backend API</div>
+            <div class="node-desc">Transisi GAS atau Native Node.js/PostgreSQL di Contabo</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p style="font-size: 8pt; color: #475569;">
+      <strong>Keunggulan Arsitektur Baru:</strong> Front-end PWA dan model biometrik disajikan dari server dedicated dengan kompresi optimal. Server ini juga membuka jalan untuk memigrasikan backend ke Node.js / FastAPI mandiri di server yang sama, menghilangkan ketergantungan pada Google Sheets.
+    </p>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- ==================== HALAMAN 3 ==================== -->
+  <!-- SECTION 3: TABEL PERBANDINGAN (TIDAK ADA DOMAIN & URL) -->
+  <div class="avoid-break">
+    <h2><span class="icon">⚖️</span> 3. Tabel Perbandingan Sebelum vs Sesudah Pindah</h2>
+    <p style="font-size: 8pt; color: #64748b; margin-bottom: 4px;">
+      *Catatan: Parameter evaluasi teknis berfokus pada infrastruktur, legalitas, performa, dan reliabilitas operasional.
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 25%;">Parameter Komparasi</th>
+          <th style="width: 37%;">Sebelum Pindah (GitHub Pages)</th>
+          <th style="width: 38%;">Sesudah Pindah (VPS Contabo)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Kepatuhan Ketentuan Layanan (ToS)</strong></td>
+          <td><span class="status-badge-red">NON-COMPLIANT</span><br/>Melanggar aturan hosting komersial GitHub; risiko blokir instan sepihak.</td>
+          <td><span class="status-badge-green">100% LEGAL &amp; SESUAI ATURAN</span><br/>Server milik perusahaan sendiri, bebas untuk seluruh kegiatan komersial.</td>
+        </tr>
+        <tr>
+          <td><strong>Kategori &amp; Hak Akses Server</strong></td>
+          <td><span class="status-badge-red">SHARED / TERBATAS</span><br/>Hanya static file hosting pihak ketiga; tanpa akses terminal / root.</td>
+          <td><span class="status-badge-green">DEDICATED ROOT ACCESS</span><br/>Kendali penuh OS Linux (Ubuntu/Debian), konfigurasi server, &amp; security.</td>
+        </tr>
+        <tr>
+          <td><strong>Kecepatan Unduh Model AI Biometrik (~7MB)</strong></td>
+          <td><span class="status-badge-red">SERING LAMBAT / THROTTLED</span><br/>Tergantung routing CDN global yang kerap lambat dari ISP mobile Indonesia.</td>
+          <td><span class="status-badge-green">SANGAT CEPAT &amp; STABIL</span><br/>Kompresi Brotli/Gzip, HTTP/2 multiplexing, dan Nginx immutable caching.</td>
+        </tr>
+        <tr>
+          <td><strong>Kontrol Keamanan &amp; Proteksi Akses</strong></td>
+          <td><span class="status-badge-red">TERBATAS</span><br/>Tidak ada firewall server, tidak bisa filtering IP, no rate limit custom.</td>
+          <td><span class="status-badge-green">PROTEKSI TINGKAT TINGGI</span><br/>Didukung UFW Firewall, Fail2ban, Custom Security Header, &amp; Cloudflare.</td>
+        </tr>
+        <tr>
+          <td><strong>Batasan Bandwidth &amp; Kuota Trafik</strong></td>
+          <td><span class="status-badge-red">ADA SOFT LIMIT</span><br/>Maks 100 GB/bulan dan limit 10 build/jam. Rawan overquota.</td>
+          <td><span class="status-badge-green">TRAFIK SANGAT BESAR</span><br/>32 TB/bulan (unmetered), bebas melayani jutaan transaksi absensi.</td>
+        </tr>
+        <tr>
+          <td><strong>Kesiapan Backend Server-Side</strong></td>
+          <td><span class="status-badge-red">TIDAK BISA RUNNING SERVER</span><br/>Mutlak terikat pada Google Apps Script &amp; Google Sheets.</td>
+          <td><span class="status-badge-green">SIAP MULTI-SERVICE</span><br/>Sanggup menjalankan API Node.js/Python &amp; Database SQL di server yang sama.</td>
+        </tr>
+        <tr>
+          <td><strong>Privasi Kode &amp; Aset Korporat</strong></td>
+          <td><span class="status-badge-red">RENTAN TERESPOS</span><br/>Berada di infrastruktur pihak ketiga; jika public repo mudah diunduh.</td>
+          <td><span class="status-badge-green">TERISOLASI PRIVATE</span><br/>Aset dan logika aplikasi terlindungi di partisi server privat korporat.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- SECTION 4: ALASAN PENDUKUNG LAINNYA -->
+  <div class="avoid-break" style="margin-top: 12px;">
+    <h2><span class="icon">💡</span> 4. Alasan Teknis Pendukung Migrasi ke VPS Contabo</h2>
+    
+    <div class="grid-2">
+      <div class="info-card info-card-gold">
+        <h4>1. Caching Model AI Wajah (face-api.js)</h4>
+        <p>File bobot neural network (4.2 MB + 2.2 MB) dapat dikonfigurasi dengan header Nginx <code>Cache-Control: public, max-age=31536000, immutable</code>. Karyawan hanya mengunduh 1 kali dan kamera langsung aktif instan.</p>
+      </div>
+
+      <div class="info-card info-card-green">
+        <h4>2. Pondasi Menghapus Masalah Google Sheets</h4>
+        <p>Google Apps Script lambat (2-5 detik) dan Google Sheets rawan mengalami <em>lock timeout</em> saat puluhan karyawan absen bersamaan di jam sibuk. VPS Contabo siap menampung database SQL berkecepatan milidetik.</p>
+      </div>
+
+      <div class="info-card">
+        <h4>3. Efisiensi Biaya Ekstrem (Cost-to-Performance)</h4>
+        <p>Contabo Cloud VPS S menawarkan 4 vCPU, 8 GB RAM, dan 200 GB SSD hanya &asymp; $5.50 / bulan. Kapasitas ini sangat besar dan dapat menangani trafik ratusan outlet Golden Lamian dengan biaya sangat hemat.</p>
+      </div>
+
+      <div class="info-card info-card-gold">
+        <h4>4. Kesiapan Disaster Recovery &amp; Backup</h4>
+        <p>Dengan VPS, Anda dapat menjalankan <em>automated daily snapshot</em> dan backup berkala ke cloud storage mandiri, memastikan kepemilikan dan kedaulatan data operasional 100% berada di tangan perusahaan.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- ==================== HALAMAN 4 ==================== -->
+  <!-- SECTION 5: ROADMAP MIGRASI -->
+  <div class="avoid-break">
+    <h2><span class="icon">📋</span> 5. Rencana &amp; Roadmap Tahapan Migrasi Teknis</h2>
+    <ol class="roadmap-list">
+      <li><strong>Fase 1 (Provisioning VPS):</strong> Setup OS Ubuntu 22.04 / 24.04 LTS pada VPS Contabo, instalasi Nginx, Git, Certbot SSL, dan pengaktifan Firewall UFW.</li>
+      <li><strong>Fase 2 (Deploy Front-End PWA):</strong> Transfer file <code>index.html</code>, <code>pwa_app.js</code>, <code>sw.js</code>, dan folder <code>models/</code> ke direktori web server (<code>/var/www/absensi</code>).</li>
+      <li><strong>Fase 3 (Konfigurasi Caching Nginx):</strong> Mengaktifkan kompresi Gzip/Brotli dan rules caching agresif untuk file model biometrik wajah (<code>face-api.js</code>).</li>
+      <li><strong>Fase 4 (Update Service Worker):</strong> Memperbarui versi cache pada <code>sw.js</code> agar browser HP seluruh karyawan otomatis mengunduh versi server baru.</li>
+      <li><strong>Fase 5 (Roadmap Backend Masa Depan):</strong> Membangun REST API mandiri (FastAPI/Express) di server Contabo untuk menggantikan Google Sheets secara bertahap.</li>
+    </ol>
+  </div>
+
+  <!-- SECTION 6: KESIMPULAN & REKOMENDASI EKSEKUTIF -->
+  <div class="avoid-break" style="margin-top: 14px;">
+    <h2><span class="icon">🔒</span> 6. Kesimpulan &amp; Rekomendasi Eksekutif</h2>
+    
+    <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 12px; font-size: 8pt; line-height: 1.4;">
+      <p style="margin-bottom: 6px;">
+        <strong>1. Kebutuhan Mendesak:</strong> Pelanggaran <em>Terms of Service</em> GitHub Pages menempatkan operasional harian seluruh outlet Golden Lamian pada risiko fatal pemblokiran akses sewaktu-waktu. Migrasi ke VPS Contabo bukan lagi sekadar peningkatan teknis opsional, melainkan kebutuhan darurat mitigasi risiko bisnis.
+      </p>
+      <p style="margin-bottom: 6px;">
+        <strong>2. Solusi Handal untuk PWA:</strong> Progressive Web App (PWA) sangat bergantung pada kecepatan inisialisasi awal. Hosting mandiri di Nginx VPS Contabo menjamin pengunduhan model AI wajah (~7 MB) berjalan secepat kilat dengan kompresi data dan caching lokal permanen di HP karyawan.
+      </p>
+      <p style="margin: 0;">
+        <strong>3. Rekomendasi Langkah Selanjutnya:</strong> Segera lakukan provisioning VPS Contabo (Cloud VPS S / M), konfigurasikan Nginx Web Server, dan arahkan distribusi PWA absensi ke server privat ini untuk memastikan kelancaran operasional dan kepatuhan penuh standar TI korporasi.
+      </p>
+    </div>
+  </div>
+
+</body>
+</html>

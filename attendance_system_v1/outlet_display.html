@@ -1,0 +1,2020 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Outlet Attendance</title>
+  <link rel="icon" type="image/png" href="app_icon_v2.png">
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- QR Code Generator Library -->
+  <script src="qrcode.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: rgba(17, 24, 39, 0.7);
+      --border: rgba(255, 255, 255, 0.06);
+      --primary: #6366f1;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Outfit', sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      background-image:
+        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.1) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.05) 0px, transparent 50%);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+      /* page itself does NOT scroll */
+      display: flex;
+      flex-direction: column;
+      padding: 16px 24px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo-area h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      background: linear-gradient(to right, #818cf8, #34d399);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .logo-area p {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      padding: 8px 16px;
+      border-radius: 30px;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+      display: inline-block;
+    }
+
+    .status-dot.offline {
+      background: var(--warning);
+      box-shadow: 0 0 8px var(--warning);
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 390px 1fr;
+      gap: 20px;
+      flex: 1;
+      min-height: 0;
+      height: calc(100vh - 110px);
+    }
+
+    /* Left Panel - Dynamic On-Demand QR */
+    .qr-panel {
+      background: var(--card-bg);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      height: 100%;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Interactive QR Card */
+    .qr-interactive-card {
+      position: relative;
+      cursor: pointer;
+      user-select: none;
+      padding: 8px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.25s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      outline: none;
+    }
+
+    .qr-interactive-card:hover {
+      transform: translateY(-3px) scale(1.015);
+      border-color: rgba(99, 102, 241, 0.45);
+      box-shadow: 0 16px 36px -8px rgba(99, 102, 241, 0.3);
+    }
+
+    .qr-interactive-card:active {
+      transform: scale(0.975);
+    }
+
+    .qr-interactive-card.card-pop {
+      animation: cardPop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    @keyframes cardPop {
+      0% {
+        transform: scale(0.95);
+        filter: brightness(1.2);
+      }
+
+      50% {
+        transform: scale(1.025);
+        filter: brightness(1.05);
+      }
+
+      100% {
+        transform: scale(1);
+        filter: brightness(1);
+      }
+    }
+
+    .qr-container {
+      position: relative;
+      background: white;
+      padding: 10px;
+      border-radius: 16px;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 240px;
+      height: 240px;
+      overflow: hidden;
+    }
+
+    .qr-container canvas {
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+      border-radius: 6px;
+    }
+
+    /* Laser Scanner Line Sweep Effect */
+    .laser-scan-line {
+      position: absolute;
+      top: -10px;
+      left: 0;
+      width: 100%;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, rgba(52, 211, 153, 0.95), #818cf8, transparent);
+      box-shadow: 0 0 12px 2px #34d399, 0 0 24px 4px #818cf8;
+      pointer-events: none;
+      z-index: 10;
+      opacity: 0;
+    }
+
+    .laser-scan-line.scanning {
+      opacity: 1;
+      animation: laserSweep 0.85s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+
+    @keyframes laserSweep {
+      0% {
+        top: 0%;
+        opacity: 1;
+      }
+
+      90% {
+        top: 98%;
+        opacity: 1;
+      }
+
+      100% {
+        top: 100%;
+        opacity: 0;
+      }
+    }
+
+    /* Ripple Click Wave Effect */
+    .ripple-container {
+      position: absolute;
+      inset: 0;
+      border-radius: 18px;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 12;
+    }
+
+    .ripple-wave {
+      position: absolute;
+      border-radius: 50%;
+      transform: scale(0);
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.55) 0%, rgba(52, 211, 153, 0.25) 45%, transparent 70%);
+      animation: rippleExpand 0.65s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+      pointer-events: none;
+    }
+
+    @keyframes rippleExpand {
+      to {
+        transform: scale(3.5);
+        opacity: 0;
+      }
+    }
+
+    /* Expired / Standby Holographic Overlay */
+    .qr-expired-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(11, 15, 25, 0.85);
+      backdrop-filter: blur(8px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+      border-radius: 18px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.35s ease, backdrop-filter 0.35s ease;
+    }
+
+    .qr-expired-overlay.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .cyber-radar {
+      position: relative;
+      width: 76px;
+      height: 76px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .radar-ring-outer {
+      position: absolute;
+      inset: 0;
+      border: 2px dashed rgba(99, 102, 241, 0.75);
+      border-radius: 50%;
+      animation: spinClockwise 8s linear infinite;
+    }
+
+    .radar-ring-inner {
+      position: absolute;
+      inset: 10px;
+      border: 2px solid rgba(52, 211, 153, 0.6);
+      border-top-color: transparent;
+      border-bottom-color: transparent;
+      border-radius: 50%;
+      animation: spinCounterClockwise 3.5s linear infinite;
+    }
+
+    .radar-core {
+      width: 16px;
+      height: 16px;
+      background: linear-gradient(135deg, #818cf8, #34d399);
+      border-radius: 50%;
+      box-shadow: 0 0 16px #34d399, 0 0 28px #818cf8;
+      animation: pulseCore 1.6s ease-in-out infinite alternate;
+    }
+
+    @keyframes spinClockwise {
+      from {
+        transform: rotate(0deg);
+      }
+
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes spinCounterClockwise {
+      from {
+        transform: rotate(0deg);
+      }
+
+      to {
+        transform: rotate(-360deg);
+      }
+    }
+
+    @keyframes pulseCore {
+      0% {
+        transform: scale(0.85);
+        opacity: 0.8;
+      }
+
+      100% {
+        transform: scale(1.25);
+        opacity: 1;
+        box-shadow: 0 0 22px #34d399, 0 0 36px #818cf8;
+      }
+    }
+
+    .timer-container {
+      width: 100%;
+      max-width: 260px;
+      margin-top: 16px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.84rem;
+    }
+
+    .progress-bar {
+      flex: 1;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 3px;
+      margin: 0 10px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #6366f1, #34d399);
+      border-radius: 3px;
+      transition: width 1s linear, background 0.3s ease;
+      box-shadow: 0 0 8px rgba(52, 211, 153, 0.4);
+    }
+
+    .progress-fill.expired {
+      background: rgba(245, 158, 11, 0.4);
+      box-shadow: none;
+    }
+
+    .qr-meta-info {
+      margin-top: 10px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #e0e7ff;
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      padding: 6px 14px;
+      border-radius: 20px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+      letter-spacing: 0.02em;
+    }
+
+    /* Right Panel - Attendance Board */
+    .board-panel {
+      background: var(--card-bg);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    .board-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .board-title {
+      font-size: 1.3rem;
+      font-weight: 600;
+    }
+
+    .board-list-container {
+      flex: 1;
+      overflow-y: auto;
+      padding-right: 5px;
+    }
+
+    .board-list-container::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .board-list-container::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+    }
+
+    .attendance-item {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 20px;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateY(10px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .emp-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .emp-name {
+      font-weight: 600;
+      font-size: 1.05rem;
+    }
+
+    .emp-nrp {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+    }
+
+    .scan-meta {
+      text-align: right;
+    }
+
+    .scan-time {
+      font-weight: 700;
+      font-size: 1.1rem;
+      color: var(--success);
+    }
+
+    .scan-type {
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--success);
+      padding: 2px 8px;
+      border-radius: 20px;
+      display: inline-block;
+      margin-top: 4px;
+    }
+
+    .empty-state {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      text-align: center;
+      gap: 12px;
+    }
+
+    /* Settings Overlay & Modals */
+    /* Settings Overlay & Modals */
+    .overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(11, 15, 25, 0.85);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+      box-sizing: border-box;
+      overflow-y: auto;
+    }
+
+    .modal-card {
+      background: #111827;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px 28px;
+      width: 100%;
+      max-width: 500px;
+      max-height: calc(100vh - 60px);
+      overflow-y: auto;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+      margin: auto;
+    }
+
+    /* Custom scrollbar for modal */
+    .modal-card::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .modal-card::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 3px;
+    }
+
+    .modal-card::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 3px;
+    }
+
+    .modal-card::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    .modal-card h2 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+      letter-spacing: 0.05em;
+    }
+
+    .form-group input {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 11px 14px;
+      color: white;
+      font-size: 0.92rem;
+      outline: none;
+      box-sizing: border-box;
+    }
+
+    .form-group input:focus {
+      border-color: var(--primary);
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .btn {
+      width: 100%;
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 12px 16px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      box-sizing: border-box;
+    }
+
+    .btn:hover {
+      background: #4f46e5;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: white;
+    }
+
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.15);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.35);
+    }
+
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.25);
+      color: #ffffff;
+    }
+
+    .btn-inline {
+      width: auto !important;
+      flex-shrink: 0;
+      padding: 11px 16px !important;
+      font-size: 0.85rem !important;
+      white-space: nowrap;
+    }
+
+    .settings-trigger {
+      position: relative;
+      width: 38px;
+      height: 38px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: all 0.25s ease;
+      flex-shrink: 0;
+    }
+
+    .settings-trigger:hover {
+      background: rgba(99, 102, 241, 0.15);
+      border-color: rgba(99, 102, 241, 0.4);
+      color: #a5b4fc;
+      transform: rotate(30deg) scale(1.05);
+      box-shadow: 0 0 12px rgba(99, 102, 241, 0.3);
+    }
+  </style>
+</head>
+
+<body>
+
+  <header style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 20px;">
+    <!-- LEFT: Logo & Outlet Info -->
+    <div class="logo-area" style="display: flex; align-items: center; gap: 14px;">
+      <img src="app_icon_v2.png" alt="Smart Presence Icon"
+        style="width: 46px; height: 46px; border-radius: 12px; box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4); border: 1px solid rgba(255, 255, 255, 0.15); object-fit: cover;">
+      <div>
+        <h1 id="headerOutletName">Outlet Dashboard</h1>
+        <p>Ketuk kotak dan pindai dengan kamera untuk absen</p>
+      </div>
+    </div>
+
+    <!-- CENTER: Real-Time Server Clock Widget -->
+    <div
+      style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); padding: 8px 24px; border-radius: 18px; backdrop-filter: blur(10px); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2); text-align: center;">
+      <div
+        style="display: flex; align-items: center; gap: 6px; font-size: 0.7rem; color: #818cf8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 2px;">
+        <span
+          style="width: 6px; height: 6px; border-radius: 50%; background: #34d399; display: inline-block; box-shadow: 0 0 6px #34d399;"></span>
+        <span>Waktu Server</span>
+        <span id="headerTzBadge"
+          style="background: rgba(99, 102, 241, 0.25); border: 1px solid rgba(99, 102, 241, 0.45); color: #a5b4fc; padding: 1px 7px; border-radius: 6px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.5px;">WIB</span>
+      </div>
+      <div id="headerServerTime"
+        style="font-size: 1.65rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0.5px; background: linear-gradient(to right, #ffffff, #e0e7ff); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; line-height: 1.1;">
+        --:--:--
+      </div>
+      <div id="headerServerDate"
+        style="font-size: 0.78rem; color: var(--text-muted); font-weight: 500; margin-top: 2px;">
+        -
+      </div>
+    </div>
+
+    <!-- RIGHT: Status Badges & Settings Trigger -->
+    <div style="display: flex; gap: 12px; align-items: center; justify-self: end;">
+      <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end;">
+        <div id="tamperWarningBadge" class="status-badge"
+          style="display: none; background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.4); color: #f87171; padding: 5px 12px; font-size: 0.78rem;">
+          <span class="status-dot" style="background: #ef4444; box-shadow: 0 0 8px #ef4444;"></span>
+          <span>⚠️ Jam PC Diubah!</span>
+        </div>
+        <div class="status-badge" style="padding: 5px 12px; font-size: 0.78rem;">
+          <span id="networkDot" class="status-dot"></span>
+          <span id="networkText">Online</span>
+        </div>
+      </div>
+
+      <!-- Settings / Keamanan Konfigurasi Button -->
+      <div class="settings-trigger" onclick="openSettings()" title="Keamanan Konfigurasi">
+        <svg style="width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2;" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </div>
+    </div>
+  </header>
+
+  <div class="main-grid">
+
+    <!-- LEFT PANEL: Dynamic On-Demand QR Code -->
+    <div class="qr-panel">
+      <!-- Interactive Clickable QR Card -->
+      <div class="qr-interactive-card" id="qrInteractiveCard" onclick="handleQRCardClick(event)"
+        title="Klik untuk perbarui QR Code">
+        <div class="qr-container" id="qrcodeCanvasContainer">
+          <!-- Canvas will be inserted here -->
+          <div class="laser-scan-line" id="laserScanLine"></div>
+          <div class="ripple-container" id="qrRippleContainer"></div>
+          <div class="qr-expired-overlay" id="qrExpiredOverlay">
+            <div class="cyber-radar">
+              <div class="radar-ring-outer"></div>
+              <div class="radar-ring-inner"></div>
+              <div class="radar-core"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Countdown timer (10s Masa Aktif) -->
+      <div class="timer-container" id="qrTimerContainer">
+        <span id="timerLabel" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">Masa Aktif</span>
+        <div class="progress-bar">
+          <div class="progress-fill" id="timerFill"></div>
+        </div>
+        <span id="timerText" style="font-weight: 600; font-variant-numeric: tabular-nums;">10s</span>
+      </div>
+
+      <!-- Timestamp info (High contrast & clearly visible) -->
+      <div class="qr-meta-info">
+        <span id="qrGeneratedTime">Terakhir dibuat: --:--:-- WIB</span>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL: Attendance List -->
+    <div class="board-panel">
+      <div class="board-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <div class="board-title">Daftar Kehadiran Hari Ini</div>
+          <div id="syncTime" style="font-size: 0.8rem; color: var(--text-muted);">Memuat...</div>
+        </div>
+        <button id="btnRefreshBoard" type="button" class="btn" onclick="manualRefreshBoard()"
+          style="padding: 8px 14px; font-size: 0.82rem; display: flex; align-items: center; gap: 6px; cursor: pointer; border-radius: 10px; background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); color: var(--text-main); font-weight: 600; width: auto; width: fit-content; margin: 0;">
+          <svg id="refreshIconSvg"
+            style="width: 15px; height: 15px; fill: currentColor; transition: transform 0.5s ease;" viewBox="0 0 24 24">
+            <path
+              d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
+          </svg>
+          <span>Refresh Data</span>
+        </button>
+      </div>
+
+      <div class="board-list-container" id="attendanceBoard">
+        <!-- Attendance items will be dynamically generated -->
+        <div class="empty-state">
+          <svg style="width: 48px; height: 48px; fill: currentColor; opacity: 0.5;" viewBox="0 0 24 24">
+            <path
+              d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
+          </svg>
+          <p>Belum ada karyawan yang melakukan absensi hari ini.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Admin Password Auth Modal -->
+  <div class="overlay" id="passAuthOverlay" style="display: none;">
+    <div class="modal-card" style="max-width: 380px;">
+      <h2 style="font-size: 1.3rem; font-weight: 700; margin-bottom: 8px; text-align: center; color: var(--text);">
+        🔒 Keamanan Konfigurasi
+      </h2>
+      <p style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 20px;">
+        Masukkan Password Admin untuk mengedit konfigurasi outlet
+      </p>
+      <div class="form-group">
+        <label for="inputAdminPass">Password Admin</label>
+        <input type="password" id="inputAdminPass" autocomplete="current-password" placeholder="Masukkan password admin"
+          onkeydown="if(event.key==='Enter') verifyAdminPassword();">
+      </div>
+      <div id="passAuthError"
+        style="font-size: 0.8rem; color: var(--danger); text-align: center; margin-bottom: 12px; display: none;">
+        ❌ Password salah! Silakan coba lagi.
+      </div>
+      <div style="display: flex; gap: 10px;">
+        <button type="button" class="btn" onclick="verifyAdminPassword()">Masuk</button>
+        <button type="button" class="btn btn-secondary" onclick="closePassAuthModal()">Batal</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Setup/Configuration Modal (Shows if configuration is missing) -->
+  <div class="overlay" id="setupOverlay" style="display: none;">
+    <div class="modal-card">
+      <h2 id="modalTitle">Konfigurasi Outlet</h2>
+      <p style="font-size: 0.83rem; color: var(--text-muted); margin-bottom: 16px; line-height: 1.4;">
+        Masukkan URL Apps Script dan nama outlet. Secret Key & URL PWA dapat disinkronkan otomatis dari Google Sheets.
+      </p>
+
+      <div class="form-group">
+        <label for="inputGasUrl">URL Web App Google Apps Script</label>
+        <input type="text" id="inputGasUrl" placeholder="https://script.google.com/macros/s/xxxx/exec"
+          onchange="loadOutletsDropdown(this.value, true)">
+      </div>
+
+      <div class="form-group">
+        <label for="inputOutlet">Nama Outlet</label>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <input type="text" id="inputOutlet" list="outletsDatalist" placeholder="Contoh: GL-SUPER MAL KARAWACI"
+            style="flex: 1; min-width: 0;" onfocus="loadOutletsDropdown()">
+          <button type="button" class="btn btn-secondary btn-inline" onclick="fetchCloudConfigAndFill()">🔄 Fetch
+            Cloud</button>
+        </div>
+        <datalist id="outletsDatalist"></datalist>
+      </div>
+
+      <div class="form-group">
+        <label for="inputSecret">Secret Key (Base32)</label>
+        <input type="text" id="inputSecret" placeholder="Otomatis terisi dari Cloud jika dikosongkan">
+      </div>
+
+      <div class="form-group">
+        <label for="inputPwaUrl">URL PWA Karyawan (Hosting PWA)</label>
+        <input type="text" id="inputPwaUrl" placeholder="Otomatis terisi dari Cloud / masukkan URL PWA">
+      </div>
+
+      <div class="form-group">
+        <label for="inputAdminPassConfig">Password Admin (Proteksi Tombol Edit)</label>
+        <input type="password" id="inputAdminPassConfig" autocomplete="new-password"
+          placeholder="Kosongkan jika tidak ingin diubah">
+      </div>
+
+      <div id="setupConfigStatus"
+        style="font-size: 0.82rem; margin-bottom: 12px; display: none; padding: 8px 12px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border);">
+      </div>
+
+      <div style="display: flex; gap: 10px; margin-top: 18px;">
+        <button type="button" class="btn" onclick="saveConfiguration()">Simpan & Jalankan</button>
+        <button type="button" class="btn btn-secondary"
+          onclick="document.getElementById('setupOverlay').style.display='none';">Batal</button>
+      </div>
+      <div style="margin-top: 10px;" id="resetBtnContainer">
+        <button type="button" class="btn btn-danger" id="btnResetConfig" onclick="handleResetButtonClick()">🗑️ Reset Konfigurasi</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Configuration Variables
+    let config = {
+      outlet: '',
+      secret: '',
+      gasUrl: '',
+      pwaUrl: ''
+    };
+
+    // State Variables
+    let currentToken = '';
+    let qrCountdown = 10;
+    let qrActive = false;
+    let isOffline = false;
+
+    // Timers & Intervals (Isolated for Zero Memory Leak)
+    let syncInterval = null;
+    let qrCountdownTimer = null;
+    let liveClockInterval = null;
+
+    // Anti-Tampering & Time Sync Variables
+    let timeOffsetMs = 0;
+    let isTimeSynced = false;
+    let lastSystemTime = Date.now();
+    let lastPerfTime = performance.now();
+
+    // Initialize Page
+    window.addEventListener('load', () => {
+      loadConfiguration();
+      setupNetworkCheck();
+    });
+
+    function setupNetworkCheck() {
+      const dot = document.getElementById('networkDot');
+      const text = document.getElementById('networkText');
+
+      function updateStatus() {
+        if (navigator.onLine) {
+          isOffline = false;
+          dot.className = "status-dot";
+          text.innerText = "Online";
+        } else {
+          isOffline = true;
+          dot.className = "status-dot offline";
+          text.innerText = "Offline";
+        }
+      }
+
+      window.addEventListener('online', updateStatus);
+      window.addEventListener('offline', updateStatus);
+      updateStatus();
+    }
+
+    // Fetch Configuration from Cloud (Google Sheets via GAS)
+    async function fetchCloudConfig(gasUrl, outletName) {
+      if (!gasUrl || !outletName) return null;
+      try {
+        const url = `${gasUrl}?action=get_outlet_config&outlet=${encodeURIComponent(outletName)}&_t=${Date.now()}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data && data.status === "success" && data.message) {
+          const cloudConfig = data.message;
+          if (cloudConfig.secret) {
+            localStorage.setItem('outlet_secret', cloudConfig.secret);
+            config.secret = cloudConfig.secret;
+          }
+          if (cloudConfig.pwa_url) {
+            localStorage.setItem('outlet_pwa_url', cloudConfig.pwa_url);
+            config.pwaUrl = cloudConfig.pwa_url;
+          }
+          return cloudConfig;
+        }
+      } catch (err) {
+        console.warn("Gagal mengambil konfigurasi outlet dari Cloud:", err);
+      }
+      return null;
+    }
+
+    let loadedOutletsUrl = '';
+
+    // Fetch list of all registered outlets to populate datalist dropdown
+    async function loadOutletsDropdown(gasUrl, force = false) {
+      const targetUrl = gasUrl || (document.getElementById('inputGasUrl') ? document.getElementById('inputGasUrl').value.trim() : '') || config.gasUrl;
+      if (!targetUrl) return;
+
+      const datalist = document.getElementById('outletsDatalist');
+      if (!force && loadedOutletsUrl === targetUrl && datalist && datalist.children.length > 0) {
+        return;
+      }
+
+      try {
+        const url = `${targetUrl}?action=get_all_outlets&_t=${Date.now()}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data && data.status === "success" && Array.isArray(data.message)) {
+          if (datalist) {
+            const newHtml = data.message.map(o => `<option value="${o}">`).join('');
+            if (datalist.innerHTML !== newHtml) {
+              datalist.innerHTML = newHtml;
+            }
+            loadedOutletsUrl = targetUrl;
+          }
+        }
+      } catch (e) {
+        console.warn("Gagal memuat daftar outlet dari Cloud:", e);
+      }
+    }
+
+    // Button action: Fetch cloud config and fill form input fields
+    async function fetchCloudConfigAndFill() {
+      const gasUrl = document.getElementById('inputGasUrl').value.trim();
+      const outlet = document.getElementById('inputOutlet').value.trim();
+      const statusDiv = document.getElementById('setupConfigStatus');
+
+      if (!gasUrl || !outlet) {
+        alert("Mohon isi URL Apps Script dan Nama Outlet terlebih dahulu.");
+        return;
+      }
+
+      if (statusDiv) {
+        statusDiv.style.display = 'block';
+        statusDiv.style.color = 'var(--warning)';
+        statusDiv.innerText = "⏳ Mengambil data konfigurasi dari Google Sheets...";
+      }
+
+      const cloudData = await fetchCloudConfig(gasUrl, outlet);
+      if (cloudData && cloudData.secret) {
+        document.getElementById('inputSecret').value = cloudData.secret;
+        document.getElementById('inputPwaUrl').value = '';
+        if (statusDiv) {
+          statusDiv.style.color = 'var(--success)';
+          statusDiv.innerText = `✅ Berhasil sinkronisasi! Secret Key: ${cloudData.secret}`;
+        }
+      } else {
+        if (statusDiv) {
+          statusDiv.style.color = 'var(--danger)';
+          statusDiv.innerText = "❌ Outlet tidak ditemukan di tab 'Outlets' Google Sheets atau gagal terhubung.";
+        }
+      }
+    }
+
+    // Load Local Storage & Cloud Configuration
+    async function loadConfiguration() {
+      // 1. Cek jika URL memiliki query parameter (Auto-setup via URL link)
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.has('gasUrl') || urlParams.has('gas_url')) {
+        const gUrl = urlParams.get('gasUrl') || urlParams.get('gas_url');
+        if (gUrl) localStorage.setItem('outlet_gas_url', gUrl);
+      }
+      if (urlParams.has('outlet') || urlParams.has('outlet_id')) {
+        const out = urlParams.get('outlet') || urlParams.get('outlet_id');
+        if (out) localStorage.setItem('outlet', out);
+      }
+      if (urlParams.has('secret')) {
+        localStorage.setItem('outlet_secret', urlParams.get('secret'));
+      }
+      if (urlParams.has('pwaUrl') || urlParams.has('pwa_url')) {
+        const pUrl = urlParams.get('pwaUrl') || urlParams.get('pwa_url');
+        if (pUrl) localStorage.setItem('outlet_pwa_url', pUrl);
+      }
+
+      config.outlet = localStorage.getItem('outlet') || localStorage.getItem('outlet_name') || '';
+      config.secret = localStorage.getItem('outlet_secret') || '';
+      config.gasUrl = localStorage.getItem('outlet_gas_url') || '';
+      config.pwaUrl = localStorage.getItem('outlet_pwa_url') || '';
+
+      // 2. Jika secret belum ada, tarik dari Cloud
+      if (config.gasUrl && config.outlet && (!config.secret || !config.pwaUrl)) {
+        await fetchCloudConfig(config.gasUrl, config.outlet);
+        config.secret = localStorage.getItem('outlet_secret') || config.secret;
+        config.pwaUrl = localStorage.getItem('outlet_pwa_url') || config.pwaUrl;
+      } else if (config.gasUrl && config.outlet) {
+        // Jika secret sudah ada di localStorage, jalankan sync cloud di latar belakang tanpa memblokir UI
+        fetchCloudConfig(config.gasUrl, config.outlet);
+      }
+
+      // 3. Fallback default PWA URL jika belum di-set
+      if (!config.pwaUrl) {
+        config.pwaUrl = window.location.origin + window.location.pathname.replace('outlet_display.html', '');
+        localStorage.setItem('outlet_pwa_url', config.pwaUrl);
+      }
+
+      // 4. Verifikasi apakah semua parameter utama tersedia
+      if (!config.outlet || !config.secret || !config.gasUrl) {
+        showSettingsModal();
+      } else {
+        document.getElementById('setupOverlay').style.display = 'none';
+        document.getElementById('headerOutletName').innerText = config.outlet;
+        startApp();
+      }
+    }
+
+    // Helper Hashing SHA-256 (Web Crypto API)
+    async function hashPassword(str) {
+      if (!str) return '';
+      try {
+        if (window.crypto && window.crypto.subtle) {
+          const encoder = new TextEncoder();
+          const data = encoder.encode(str);
+          const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+          const hashArray = Array.from(new Uint8Array(hashBuffer));
+          return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+      } catch (e) {
+        console.warn("crypto.subtle fallback used:", e);
+      }
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+      }
+      return 'f_' + Math.abs(hash).toString(16);
+    }
+
+    async function saveConfiguration() {
+      const outlet = document.getElementById('inputOutlet').value.trim();
+      let secret = document.getElementById('inputSecret').value.trim().toUpperCase();
+      const gasUrl = document.getElementById('inputGasUrl').value.trim();
+      let pwaUrl = document.getElementById('inputPwaUrl').value.trim();
+      const newAdminPass = document.getElementById('inputAdminPassConfig').value.trim();
+
+      if (!outlet || !gasUrl) {
+        alert("Mohon isi minimal Nama Outlet dan URL Apps Script.");
+        return;
+      }
+
+      // Jika Secret Key atau PWA URL kosong, coba tarik dari Cloud
+      if (!secret || !pwaUrl) {
+        const cloudData = await fetchCloudConfig(gasUrl, outlet);
+        if (cloudData) {
+          if (!secret && cloudData.secret) secret = cloudData.secret;
+          if (!pwaUrl && cloudData.pwa_url) pwaUrl = cloudData.pwa_url;
+        }
+      }
+
+      if (!secret) {
+        alert("Secret Key tidak ditemukan di Google Sheets untuk outlet ini. Mohon masukkan Secret Key secara manual.");
+        return;
+      }
+
+      if (!pwaUrl) {
+        pwaUrl = window.location.origin + window.location.pathname.replace('outlet_display.html', '');
+      }
+
+      localStorage.removeItem('outlet_id');
+      localStorage.removeItem('outlet_name');
+      localStorage.setItem('outlet', outlet);
+      localStorage.setItem('outlet_secret', secret);
+      localStorage.setItem('outlet_gas_url', gasUrl);
+      localStorage.setItem('outlet_pwa_url', pwaUrl);
+
+      if (newAdminPass) {
+        const passHash = await hashPassword(newAdminPass);
+        localStorage.setItem('outlet_admin_pass_hash', passHash);
+        alert("🔐 Password Admin berhasil diperbarui ke password baru.");
+      }
+
+      loadConfiguration();
+    }
+
+    // =========================================================================
+    // RESET CONFIGURATION (Bebas Blokir Popup Browser & 100% Total Wipe)
+    // =========================================================================
+
+    let isResetConfirming = false;
+    let resetConfirmTimeout = null;
+
+    function resetConfiguration() {
+      handleResetButtonClick();
+    }
+
+    function handleResetButtonClick() {
+      const btn = document.getElementById('btnResetConfig');
+      const statusDiv = document.getElementById('setupConfigStatus');
+
+      if (!isResetConfirming) {
+        // Langkah 1: Minta konfirmasi klik kedua secara inline (aman dari blokir confirm popup)
+        isResetConfirming = true;
+        if (btn) {
+          btn.innerHTML = "⚠️ Klik Sekali Lagi untuk Konfirmasi Hapus";
+          btn.style.background = "rgba(239, 68, 68, 0.9)";
+          btn.style.color = "#ffffff";
+          btn.style.fontWeight = "700";
+        }
+        if (statusDiv) {
+          statusDiv.style.display = 'block';
+          statusDiv.style.background = 'rgba(239, 68, 68, 0.15)';
+          statusDiv.style.border = '1px solid rgba(239, 68, 68, 0.35)';
+          statusDiv.style.color = '#f87171';
+          statusDiv.style.padding = '8px 12px';
+          statusDiv.style.borderRadius = '8px';
+          statusDiv.innerText = '⚠️ Klik tombol merah sekali lagi jika Anda yakin ingin menghapus seluruh data konfigurasi.';
+        }
+
+        // Kembalikan tombol ke keadaan semula setelah 6 detik jika tidak diklik ulang
+        if (resetConfirmTimeout) clearTimeout(resetConfirmTimeout);
+        resetConfirmTimeout = setTimeout(() => {
+          cancelResetConfirmation();
+        }, 6000);
+      } else {
+        // Langkah 2: Eksekusi reset total
+        cancelResetConfirmation();
+        executeResetConfiguration();
+      }
+    }
+
+    function cancelResetConfirmation() {
+      isResetConfirming = false;
+      if (resetConfirmTimeout) {
+        clearTimeout(resetConfirmTimeout);
+        resetConfirmTimeout = null;
+      }
+      const btn = document.getElementById('btnResetConfig');
+      if (btn) {
+        btn.innerHTML = "🗑️ Reset Konfigurasi";
+        btn.style.background = "rgba(239, 68, 68, 0.15)";
+        btn.style.color = "#ef4444";
+        btn.style.fontWeight = "600";
+      }
+    }
+
+    function executeResetConfiguration() {
+      // 1. Bersihkan query parameter di URL
+      try {
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      } catch (e) {
+        console.warn("Gagal membersihkan URL query parameters:", e);
+      }
+
+      // 2. Bersihkan seluruh data localStorage & sessionStorage
+      try {
+        localStorage.removeItem('outlet');
+        localStorage.removeItem('outlet_name');
+        localStorage.removeItem('outlet_id');
+        localStorage.removeItem('outlet_secret');
+        localStorage.removeItem('outlet_gas_url');
+        localStorage.removeItem('outlet_pwa_url');
+        localStorage.removeItem('outlet_admin_pass_hash');
+        localStorage.removeItem('attendance_last_event');
+        localStorage.removeItem('am_auth_pin_hash');
+      } catch (errStorage) {
+        console.warn("Gagal removeItem:", errStorage);
+      }
+
+      // 3. Reset internal configuration state
+      config = {
+        outlet: '',
+        secret: '',
+        gasUrl: '',
+        pwaUrl: ''
+      };
+
+      loadedOutletsUrl = '';
+      const datalist = document.getElementById('outletsDatalist');
+      if (datalist) datalist.innerHTML = '';
+
+      // 4. Kosongkan input form modal
+      const elOutlet = document.getElementById('inputOutlet');
+      const elSecret = document.getElementById('inputSecret');
+      const elGasUrl = document.getElementById('inputGasUrl');
+      const elPwaUrl = document.getElementById('inputPwaUrl');
+      const elAdminPass = document.getElementById('inputAdminPassConfig');
+
+      if (elOutlet) elOutlet.value = '';
+      if (elSecret) elSecret.value = '';
+      if (elGasUrl) elGasUrl.value = '';
+      if (elPwaUrl) elPwaUrl.value = '';
+      if (elAdminPass) elAdminPass.value = '';
+
+      // 5. Reset UI Header & Panel
+      const elHeaderOutlet = document.getElementById('headerOutletName');
+      if (elHeaderOutlet) elHeaderOutlet.innerText = "Outlet Dashboard";
+
+      if (syncInterval) {
+        clearInterval(syncInterval);
+        syncInterval = null;
+      }
+      if (qrCountdownTimer) {
+        clearInterval(qrCountdownTimer);
+        qrCountdownTimer = null;
+      }
+
+      qrActive = false;
+      qrCountdown = 0;
+
+      // 6. Bersihkan Canvas QR Code & Overlay
+      const container = document.getElementById('qrcodeCanvasContainer');
+      if (container) {
+        const canvas = container.querySelector('canvas');
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+
+      const expiredOverlay = document.getElementById('qrExpiredOverlay');
+      if (expiredOverlay) expiredOverlay.classList.remove('show');
+
+      const timerFill = document.getElementById('timerFill');
+      if (timerFill) {
+        timerFill.style.width = '0%';
+        timerFill.classList.add('expired');
+      }
+      const timerText = document.getElementById('timerText');
+      if (timerText) timerText.textContent = '0s';
+
+      const genTimeElem = document.getElementById('qrGeneratedTime');
+      if (genTimeElem) genTimeElem.textContent = 'Terakhir dibuat: --:--:-- WIB';
+
+      // 7. Kosongkan data kehadiran
+      renderAttendanceBoard([]);
+
+      // 8. Tampilkan pesan sukses di modal setup
+      const statusDiv = document.getElementById('setupConfigStatus');
+      if (statusDiv) {
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = 'rgba(16, 185, 129, 0.15)';
+        statusDiv.style.border = '1px solid rgba(16, 185, 129, 0.35)';
+        statusDiv.style.color = '#34d399';
+        statusDiv.style.padding = '10px 14px';
+        statusDiv.style.borderRadius = '10px';
+        statusDiv.style.fontWeight = '600';
+        statusDiv.innerText = '✅ Seluruh data konfigurasi berhasil di-reset!';
+      }
+
+      const elModalTitle = document.getElementById('modalTitle');
+      if (elModalTitle) elModalTitle.innerText = "Konfigurasi Outlet";
+
+      const setupOverlay = document.getElementById('setupOverlay');
+      if (setupOverlay) setupOverlay.style.display = 'flex';
+    }
+
+    function openSettings() {
+      // Jika belum ada konfigurasi awal, buka modal langsung
+      if (!config || !config.outlet || !config.secret) {
+        showSettingsModal();
+        return;
+      }
+
+      // Tampilkan modal verifikasi password admin
+      const err = document.getElementById('passAuthError');
+      if (err) err.style.display = 'none';
+      document.getElementById('inputAdminPass').value = '';
+      document.getElementById('passAuthOverlay').style.display = 'flex';
+      setTimeout(() => {
+        const inp = document.getElementById('inputAdminPass');
+        if (inp) inp.focus();
+      }, 150);
+    }
+
+    async function verifyAdminPassword() {
+      try {
+        const entered = document.getElementById('inputAdminPass').value.trim();
+        let targetHash = localStorage.getItem('outlet_admin_pass_hash');
+
+        // Fast path for default password when no custom hash is set
+        if (!targetHash && entered === "HRAdmin123!") {
+          closePassAuthModal();
+          showSettingsModal();
+          return;
+        }
+
+        const enteredHash = await hashPassword(entered);
+        if (!targetHash) {
+          targetHash = await hashPassword("HRAdmin123!");
+        }
+
+        if (enteredHash === targetHash) {
+          closePassAuthModal();
+          showSettingsModal();
+        } else {
+          const err = document.getElementById('passAuthError');
+          if (err) err.style.display = 'block';
+        }
+      } catch (errExp) {
+        console.error("Password verification error:", errExp);
+        const err = document.getElementById('passAuthError');
+        if (err) err.style.display = 'block';
+      }
+    }
+
+    function closePassAuthModal() {
+      document.getElementById('passAuthOverlay').style.display = 'none';
+    }
+
+    function showSettingsModal() {
+      document.getElementById('inputOutlet').value = config.outlet || '';
+      document.getElementById('inputSecret').value = config.secret || '';
+      document.getElementById('inputGasUrl').value = config.gasUrl || '';
+      document.getElementById('inputPwaUrl').value = config.pwaUrl || '';
+      document.getElementById('inputAdminPassConfig').value = '';
+      const statusDiv = document.getElementById('setupConfigStatus');
+      if (statusDiv) statusDiv.style.display = 'none';
+
+      if (config.gasUrl) {
+        loadOutletsDropdown(config.gasUrl);
+      }
+
+      document.getElementById('modalTitle').innerText = config.outlet ? "Edit Konfigurasi" : "Konfigurasi Outlet";
+      document.getElementById('setupOverlay').style.display = 'flex';
+    }
+
+    // =========================================================================
+    // ANTI-TAMPERING & SERVER TIME SYNC
+    // =========================================================================
+
+    // Synchronize time offset from server to prevent PC clock manipulation
+    async function syncServerTime() {
+      if (isOffline) return;
+
+      const statusElem = document.getElementById('debugSyncStatus');
+      if (statusElem) {
+        statusElem.innerText = "⏳ Connecting...";
+        statusElem.style.color = "var(--warning)";
+      }
+
+      let serverMs = 0;
+      let referenceTime = Date.now();
+      let syncSource = "";
+      const cb = Date.now();
+
+      // Source 1: Cloudflare Stratum-1 Time Trace API (Ultra-precise atomic clock at edge)
+      try {
+        const tStart = Date.now();
+        const res = await fetch(`https://cloudflare.com/cdn-cgi/trace?_t=${cb}`, { cache: 'no-store' });
+        const tEnd = Date.now();
+        const latency = Math.floor((tEnd - tStart) / 2);
+
+        if (res.ok) {
+          const text = await res.text();
+          const match = text.match(/^ts=(.+)$/m);
+          if (match && match[1]) {
+            const unixSec = parseFloat(match[1]);
+            if (!isNaN(unixSec) && unixSec > 0) {
+              serverMs = Math.floor(unixSec * 1000) + latency;
+              referenceTime = tEnd;
+              syncSource = "Cloudflare Atomic Time";
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Sync via Cloudflare Trace failed:", e);
+      }
+
+      // Source 2: Fallback to Public Time APIs if Cloudflare failed
+      if (!serverMs) {
+        const timeEndpoints = [
+          { url: `https://worldtimeapi.org/api/timezone/Asia/Jakarta?_t=${cb}`, name: 'WorldTimeAPI' },
+          { url: `https://timeapi.io/api/time/current/zone?timeZone=Asia/Jakarta&_t=${cb}`, name: 'TimeAPI' }
+        ];
+
+        for (const ep of timeEndpoints) {
+          try {
+            const tStart = Date.now();
+            const res = await fetch(ep.url, { cache: 'no-store' });
+            const tEnd = Date.now();
+            const latency = Math.floor((tEnd - tStart) / 2);
+
+            if (!res.ok) continue;
+            const data = await res.json();
+
+            if (data) {
+              if (typeof data.unixtime === 'number' && data.unixtime > 0) {
+                serverMs = (data.unixtime * 1000) + latency;
+              } else if (typeof data.milliSecondsSinceEpoch === 'number' && data.milliSecondsSinceEpoch > 0) {
+                serverMs = data.milliSecondsSinceEpoch + latency;
+              } else if (data.dateTime || data.datetime) {
+                const parsed = Date.parse(data.dateTime || data.datetime);
+                if (!isNaN(parsed) && parsed > 0) serverMs = parsed + latency;
+              }
+            }
+
+            if (serverMs > 0) {
+              referenceTime = tEnd;
+              syncSource = ep.name;
+              break;
+            }
+          } catch (e) {
+            console.warn(`Sync via ${ep.name} failed:`, e);
+          }
+        }
+      }
+
+      // Source 3: Fallback to GAS Url if available
+      if (!serverMs && config.gasUrl) {
+        try {
+          const tStart = Date.now();
+          const url = `${config.gasUrl}?action=get_today_attendance&outlet=${encodeURIComponent(config.outlet)}&_t=${cb}`;
+          const response = await fetch(url);
+          const tEnd = Date.now();
+          const latency = Math.floor((tEnd - tStart) / 2);
+
+          const dateHeader = response.headers.get('date') || response.headers.get('Date');
+          if (dateHeader) {
+            const parsed = Date.parse(dateHeader);
+            if (!isNaN(parsed) && parsed > 0) {
+              serverMs = parsed + latency;
+              syncSource = "GAS Header";
+            }
+          }
+
+          if (!serverMs) {
+            try {
+              const data = await response.json();
+              if (data && data.serverTimestamp) {
+                serverMs = data.serverTimestamp + latency;
+                syncSource = "GAS Payload";
+              }
+            } catch (e) { }
+          }
+          if (serverMs > 0) referenceTime = tEnd;
+        } catch (e) {
+          console.warn("GAS Time Sync gagal:", e);
+        }
+      }
+
+      if (serverMs > 0) {
+        timeOffsetMs = serverMs - referenceTime;
+        isTimeSynced = true;
+        console.log(`⏰ Waktu Server berhasil disinkronisasi via ${syncSource}. Offset: ${timeOffsetMs}ms`);
+        if (statusElem) {
+          statusElem.innerText = `✅ ${syncSource}`;
+          statusElem.style.color = "#34d399";
+        }
+      } else {
+        console.warn("⚠️ Tidak bisa mendapatkan waktu server dari semua sumber.");
+        if (statusElem) {
+          statusElem.innerText = "❌ Offline / Gagal API";
+          statusElem.style.color = "#ef4444";
+        }
+      }
+    }
+
+    // Check if PC local clock was manually changed using monotonic clock (performance.now)
+    function checkClockTampering() {
+      const currentSystemTime = Date.now();
+      const currentPerfTime = performance.now();
+
+      const systemElapsed = currentSystemTime - lastSystemTime;
+      const perfElapsed = currentPerfTime - lastPerfTime;
+
+      // If local clock shifted by > 5 seconds compared to monotonic clock
+      if (Math.abs(systemElapsed - perfElapsed) > 5000) {
+        console.warn("⚠️ PERINGATAN: Jam PC terdeteksi diubah secara manual!");
+        showTamperWarning();
+        syncServerTime(); // Recalibrate offset immediately
+      }
+
+      lastSystemTime = currentSystemTime;
+      lastPerfTime = currentPerfTime;
+    }
+
+    function showTamperWarning() {
+      const badge = document.getElementById('tamperWarningBadge');
+      if (badge) {
+        badge.style.display = 'flex';
+        setTimeout(() => {
+          badge.style.display = 'none';
+        }, 10000);
+      }
+    }
+
+    // =========================================================================
+    // SCREEN WAKE LOCK (Mencegah Layar PC Display Outlet Auto-Sleep)
+    // =========================================================================
+    let wakeLockSentinel = null;
+
+    async function requestWakeLock() {
+      if ('wakeLock' in navigator) {
+        try {
+          wakeLockSentinel = await navigator.wakeLock.request('screen');
+          console.log('💡 Screen Wake Lock aktif - Layar PC Outlet tidak akan sleep.');
+          wakeLockSentinel.addEventListener('release', () => {
+            console.log('💡 Screen Wake Lock dilepas.');
+          });
+        } catch (err) {
+          console.warn('⚠️ Screen Wake Lock tidak dapat diaktifkan:', err);
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', async () => {
+      if (wakeLockSentinel !== null && document.visibilityState === 'visible') {
+        await requestWakeLock();
+      }
+    });
+
+    // =========================================================================
+    // APPLICATION LIFECYCLE & LIVE CLOCK
+    // =========================================================================
+
+    function startApp() {
+      // Aktifkan Screen Wake Lock agar layar PC tidak mati
+      requestWakeLock();
+
+      // Bersihkan interval lama jika ada
+      if (syncInterval) clearInterval(syncInterval);
+      if (qrCountdownTimer) clearInterval(qrCountdownTimer);
+      if (liveClockInterval) clearInterval(liveClockInterval);
+
+      // Reset waktu referensi monotonic
+      lastSystemTime = Date.now();
+      lastPerfTime = performance.now();
+
+      // Mulai Clock Header ultra-ringan (tanpa kriptografi / canvas)
+      updateLiveClock();
+      liveClockInterval = setInterval(updateLiveClock, 1000);
+
+      // Generate QR Code awal (tanpa animasi laser sweep)
+      generateNewQRCode(false);
+
+      // Sinkronkan waktu server & data absensi secara asinkron di latar belakang
+      syncServerTime().then(() => {
+        // Jika QR masih aktif saat sync selesai, kalibrasi ulang
+        if (qrActive) {
+          generateNewQRCode(false);
+        }
+      });
+
+      // Ambil data absensi awal di latar belakang
+      fetchAttendanceList();
+
+      // Re-sync waktu server setiap 10 menit sekali secara otomatis
+      syncInterval = setInterval(() => {
+        syncServerTime();
+      }, 10 * 60 * 1000);
+
+      // Listener Event: Auto Refresh saat ada Absensi baru dari HP
+      setupAttendanceEventListener();
+    }
+
+    // Ultra-lightweight Clock Loop untuk Header (0% Crypto, 0% Canvas, Zero RAM Leak)
+    function updateLiveClock() {
+      checkClockTampering();
+
+      const corrected = new Date(Date.now() + timeOffsetMs);
+      const hours = String(corrected.getHours()).padStart(2, '0');
+      const minutes = String(corrected.getMinutes()).padStart(2, '0');
+      const seconds = String(corrected.getSeconds()).padStart(2, '0');
+
+      const daysIndo = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      const monthsIndo = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+      const dayName = daysIndo[corrected.getDay()];
+      const dayNum = corrected.getDate();
+      const monthName = monthsIndo[corrected.getMonth()];
+      const year = corrected.getFullYear();
+
+      const timeElem = document.getElementById('headerServerTime');
+      const dateElem = document.getElementById('headerServerDate');
+      const tzElem = document.getElementById('headerTzBadge');
+
+      if (timeElem) timeElem.textContent = `${hours}:${minutes}:${seconds}`;
+      if (dateElem) dateElem.textContent = `${dayName}, ${dayNum} ${monthName} ${year}`;
+
+      if (tzElem) {
+        const offsetMinutes = corrected.getTimezoneOffset();
+        let tzText = 'WIB';
+        if (offsetMinutes === -480) tzText = 'WITA';
+        else if (offsetMinutes === -540) tzText = 'WIT';
+        else if (offsetMinutes === -420) tzText = 'WIB';
+        else {
+          const h = -offsetMinutes / 60;
+          tzText = `UTC${h >= 0 ? '+' : ''}${h}`;
+        }
+        tzElem.textContent = tzText;
+      }
+    }
+
+    // Tombol Manual Refresh Data Board Kehadiran
+    async function manualRefreshBoard() {
+      const svg = document.getElementById('refreshIconSvg');
+      if (svg) {
+        svg.style.transform = 'rotate(360deg)';
+      }
+      await fetchAttendanceList();
+      setTimeout(() => {
+        if (svg) svg.style.transform = 'rotate(0deg)';
+      }, 500);
+    }
+
+    // Listen Event Absensi Baru dari PWA (Auto Refresh Setelah Clock In)
+    function setupAttendanceEventListener() {
+      // 1. BroadcastChannel (jika PWA dan Outlet Dashboard di browser/device yang sama)
+      if ('BroadcastChannel' in window) {
+        try {
+          const bc = new BroadcastChannel('attendance_channel');
+          bc.onmessage = (event) => {
+            if (event.data && event.data.type === 'ATTENDANCE_SUCCESS') {
+              console.log("⚡ Absensi baru terdeteksi via BroadcastChannel! Melakukan auto refresh...");
+              fetchAttendanceList();
+              // Otomatis refresh QR untuk antrean karyawan berikutnya
+              generateNewQRCode(true);
+            }
+          };
+        } catch (e) { }
+      }
+
+      // 2. Storage event fallback
+      window.addEventListener('storage', (e) => {
+        if (e.key === 'attendance_last_event') {
+          console.log("⚡ Absensi baru terdeteksi via Storage Event! Melakukan auto refresh...");
+          fetchAttendanceList();
+          // Otomatis refresh QR untuk antrean karyawan berikutnya
+          generateNewQRCode(true);
+        }
+      });
+    }
+
+    // =========================================================================
+    // ON-DEMAND QR CODE GENERATOR & INTERACTION
+    // =========================================================================
+
+    // Handler saat user mengklik area kartu QR Code
+    function handleQRCardClick(event) {
+      if (!config.outlet || !config.secret) {
+        showSettingsModal();
+        return;
+      }
+
+      // Animasi Ripple Effect pada koordinat klik
+      triggerRippleEffect(event);
+
+      // Animasi Tactile Card Pop
+      const card = document.getElementById('qrInteractiveCard');
+      if (card) {
+        card.classList.remove('card-pop');
+        void card.offsetWidth; // Trigger reflow
+        card.classList.add('card-pop');
+      }
+
+      // Generate QR Code baru dengan animasi laser scan
+      generateNewQRCode(true);
+    }
+
+    // Trigger visual ripple wave pada posisi klik kursor
+    function triggerRippleEffect(event) {
+      const container = document.getElementById('qrRippleContainer');
+      if (!container) return;
+
+      const rect = container.getBoundingClientRect();
+      const ripple = document.createElement('span');
+      ripple.className = 'ripple-wave';
+
+      let size = Math.max(rect.width, rect.height);
+      let x, y;
+
+      if (event && typeof event.clientX === 'number' && event.clientX > 0) {
+        x = event.clientX - rect.left - (size / 2);
+        y = event.clientY - rect.top - (size / 2);
+      } else {
+        // Default di tengah jika dipicu bukan dari click event
+        x = (rect.width / 2) - (size / 2);
+        y = (rect.height / 2) - (size / 2);
+      }
+
+      ripple.style.width = size + 'px';
+      ripple.style.height = size + 'px';
+      ripple.style.left = x + 'px';
+      ripple.style.top = y + 'px';
+
+      container.appendChild(ripple);
+
+      setTimeout(() => {
+        if (ripple.parentNode) {
+          ripple.parentNode.removeChild(ripple);
+        }
+      }, 700);
+    }
+
+    // Generate Dynamic QR Code Baru & Mulai 10s Validity Countdown
+    async function generateNewQRCode(playAnimation = true) {
+      if (!config.outlet || !config.secret) return;
+
+      const correctedMs = Date.now() + timeOffsetMs;
+      const timestamp = Math.floor(correctedMs / 1000);
+      currentToken = await generateTOTP(config.secret, timestamp);
+
+      // Payload QR Code: URL berparameter agar HP mengenali sebagai web address valid
+      let cleanPwaUrl = config.pwaUrl || '';
+      if (!cleanPwaUrl.endsWith('/')) {
+        cleanPwaUrl += '/';
+      }
+      const qrPayload = `${cleanPwaUrl}?outlet=${encodeURIComponent(config.outlet)}&timestamp=${timestamp}&totp_token=${currentToken}`;
+
+      // Render QR Code to canvas (Re-use existing canvas element)
+      const container = document.getElementById('qrcodeCanvasContainer');
+      if (container) {
+        let canvas = container.querySelector('canvas');
+        if (!canvas) {
+          canvas = document.createElement('canvas');
+          container.appendChild(canvas);
+        } else {
+          const ctx = canvas.getContext('2d');
+          if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        QRCode.toCanvas(canvas, qrPayload, {
+          width: 240,
+          margin: 0,
+          color: {
+            dark: '#000000',
+            light: '#ffffff'
+          }
+        }, function (error) {
+          if (error) console.error("Gagal menggambar QR Code:", error);
+        });
+      }
+
+      // Set state AKTIF
+      qrActive = true;
+
+      // Sembunyikan Expired Overlay
+      const expiredOverlay = document.getElementById('qrExpiredOverlay');
+      if (expiredOverlay) expiredOverlay.classList.remove('show');
+
+      // Update Timestamp info
+      const genTimeElem = document.getElementById('qrGeneratedTime');
+      if (genTimeElem) {
+        const d = new Date(correctedMs);
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        const ss = String(d.getSeconds()).padStart(2, '0');
+        genTimeElem.textContent = `Terakhir dibuat: ${hh}:${mm}:${ss} WIB`;
+      }
+
+      // Efek Laser Scanner Sweep
+      if (playAnimation) {
+        const laser = document.getElementById('laserScanLine');
+        if (laser) {
+          laser.classList.remove('scanning');
+          void laser.offsetWidth; // Trigger reflow
+          laser.classList.add('scanning');
+          setTimeout(() => {
+            laser.classList.remove('scanning');
+          }, 900);
+        }
+      }
+
+      // Reset & Jalankan 10s Countdown Timer
+      if (qrCountdownTimer) {
+        clearInterval(qrCountdownTimer);
+        qrCountdownTimer = null;
+      }
+
+      qrCountdown = 10;
+      updateCountdownDisplay();
+
+      qrCountdownTimer = setInterval(() => {
+        qrCountdown--;
+        updateCountdownDisplay();
+
+        if (qrCountdown <= 0) {
+          expireQRCode();
+        }
+      }, 1000);
+    }
+
+    // Update Tampilan Progress Bar & Angka Countdown
+    function updateCountdownDisplay() {
+      const timerFill = document.getElementById('timerFill');
+      const timerText = document.getElementById('timerText');
+
+      if (timerFill) {
+        const percent = Math.max(0, (qrCountdown / 10) * 100);
+        timerFill.style.width = percent + "%";
+        if (qrCountdown > 0) {
+          timerFill.classList.remove('expired');
+        } else {
+          timerFill.classList.add('expired');
+        }
+      }
+
+      if (timerText) {
+        timerText.textContent = qrCountdown > 0 ? `${qrCountdown}s` : '0s';
+      }
+    }
+
+    // Transisi ke Status KEDALUWARSA / STANDBY (Zero CPU & Zero RAM Idle State)
+    function expireQRCode() {
+      if (qrCountdownTimer) {
+        clearInterval(qrCountdownTimer);
+        qrCountdownTimer = null;
+      }
+
+      qrActive = false;
+      qrCountdown = 0;
+      updateCountdownDisplay();
+
+      // Tampilkan Fancy Expired Hologram Overlay
+      const expiredOverlay = document.getElementById('qrExpiredOverlay');
+      if (expiredOverlay) expiredOverlay.classList.add('show');
+    }
+
+    // Fetch daftar absensi hari ini dari GAS
+    async function fetchAttendanceList() {
+      if (isOffline || !config.gasUrl) {
+        document.getElementById('syncTime').innerText = "Koneksi Offline - Menunggu Sinkronisasi";
+        return;
+      }
+
+      try {
+        const url = `${config.gasUrl}?action=get_today_attendance&outlet=${encodeURIComponent(config.outlet)}`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.status === "success") {
+          renderAttendanceBoard(data.message);
+          const now = new Date();
+          document.getElementById('syncTime').innerText = `Terakhir sinkronisasi: ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+        }
+      } catch (error) {
+        console.error("Gagal fetch data absensi:", error);
+        document.getElementById('syncTime').innerText = "Gagal terhubung ke Google Sheets API";
+      }
+    }
+
+    // Render daftar karyawan di panel kanan
+    function renderAttendanceBoard(list) {
+      const board = document.getElementById('attendanceBoard');
+
+      if (!list || list.length === 0) {
+        board.innerHTML = `
+          <div class="empty-state">
+            <svg style="width: 48px; height: 48px; fill: currentColor; opacity: 0.5;" viewBox="0 0 24 24">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+            </svg>
+            <p>Belum ada karyawan yang melakukan absensi hari ini.</p>
+          </div>`;
+        return;
+      }
+
+      let html = '';
+      list.forEach(item => {
+        const timeDisplay = item.timestamp || item.time;
+        let typeBadge = 'MASUK';
+        if (item.type === 'START_BREAK') typeBadge = 'MULAI ISTIRAHAT';
+        else if (item.type === 'STOP_BREAK' || item.type === 'END_BREAK') typeBadge = 'SELESAI ISTIRAHAT';
+        else if (item.type === 'CLOCK_OUT') typeBadge = 'PULANG';
+        else if (item.type) typeBadge = item.type;
+
+        html += `
+          <div class="attendance-item">
+            <div class="emp-info">
+              <div class="emp-name">${item.name}</div>
+              <div class="emp-nrp">${item.nrp}</div>
+            </div>
+            <div class="scan-meta">
+              <div class="scan-time">${timeDisplay}</div>
+              <div class="scan-type">${typeBadge}</div>
+            </div>
+          </div>`;
+      });
+      board.innerHTML = html;
+    }
+
+    // =========================================================================
+    // CRYPTO HELPER - Offline TOTP Generator (Web Crypto API)
+    // =========================================================================
+
+    function base32Decode(base32) {
+      const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+      base32 = base32.toUpperCase().replace(/=+$/, "");
+      const length = base32.length;
+      let bits = 0;
+      let value = 0;
+      const output = [];
+
+      for (let i = 0; i < length; i++) {
+        const val = alphabet.indexOf(base32.charAt(i));
+        if (val === -1) throw new Error("Karakter Base32 tidak valid");
+        value = (value << 5) | val;
+        bits += 5;
+        if (bits >= 8) {
+          output.push((value >> (bits - 8)) & 0xff);
+          bits -= 8;
+        }
+      }
+      return new Uint8Array(output);
+    }
+
+    async function generateTOTP(secretBase32, timestamp) {
+      try {
+        const keyBytes = base32Decode(secretBase32);
+        const interval = 10;
+        const counter = Math.floor(timestamp / interval);
+
+        const buffer = new ArrayBuffer(8);
+        const view = new DataView(buffer);
+        view.setUint32(0, 0);
+        view.setUint32(4, counter);
+
+        const cryptoKey = await window.crypto.subtle.importKey(
+          "raw",
+          keyBytes,
+          { name: "HMAC", hash: { name: "SHA-1" } },
+          false,
+          ["sign"]
+        );
+
+        const signature = await window.crypto.subtle.sign(
+          "HMAC",
+          cryptoKey,
+          buffer
+        );
+
+        const signatureBytes = new Uint8Array(signature);
+        const offset = signatureBytes[signatureBytes.length - 1] & 0xf;
+
+        const binary = ((signatureBytes[offset] & 0x7f) << 24) |
+          ((signatureBytes[offset + 1] & 0xff) << 16) |
+          ((signatureBytes[offset + 2] & 0xff) << 8) |
+          (signatureBytes[offset + 3] & 0xff);
+
+        const otpVal = binary % 1000000;
+        let otpStr = String(otpVal);
+        while (otpStr.length < 6) {
+          otpStr = "0" + otpStr;
+        }
+        return otpStr;
+      } catch (error) {
+        console.error("Gagal generate TOTP:", error);
+        return "000000";
+      }
+    }
+  </script>
+</body>
+
+</html>

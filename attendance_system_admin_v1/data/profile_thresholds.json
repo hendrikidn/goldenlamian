@@ -1,0 +1,16 @@
+{
+    "p_absent_thresh": 0.35,
+    "p_missing_thresh": 0.15,
+    "p_slipping_thresh1": 0.15,
+    "p_slipping_thresh2": 0.25,
+    "p_compensatory_thresh": 0.2,
+    "p_late_thresh": 0.25,
+    "p_early_thresh": 0.25,
+    "p_overtime_thresh": 0.3,
+    "p_break_thresh": 0.25,
+    "p_break_mins": 60,
+    "early_in_thresh_min": 10,
+    "clock_in_grace_min": 10,
+    "clock_out_grace_min": 10,
+    "late_out_thresh_min": 120
+}

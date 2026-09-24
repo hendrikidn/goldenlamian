@@ -1,0 +1,24 @@
+[Unit]
+Description=Golden Lamian HR Admin Portal (Streamlit Engine)
+After=network.target
+
+[Service]
+Type=simple
+User=goldenlamian
+Group=goldenlamian
+WorkingDirectory=/home/goldenlamian/admin
+EnvironmentFile=/home/goldenlamian/admin/.env
+ExecStart=/home/goldenlamian/admin/venv/bin/streamlit run main.py --server.port 8502 --server.address 127.0.0.1 --server.baseUrlPath /admin --server.headless true --browser.gatherUsageStats false
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=goldenlamian-admin
+
+# Resource sandbox & security
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-write
+
+[Install]
+WantedBy=multi-user.target

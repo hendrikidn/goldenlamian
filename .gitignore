@@ -1,0 +1,59 @@
+# ==============================================================================
+# Git Ignore Configuration for Golden Lamian Attendance System
+# ==============================================================================
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.lnk
+
+# Python cache & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Secrets and Private Credentials (Protects against GitHub Secret Leaks)
+.env
+*.env.local
+*.env.*.local
+*credentials*.json
+*attendance-system-*.json
+
+# Local Databases, Logs & Archives
+*.duckdb
+*.duckdb.wal
+*.log
+data/archive/
+*.tar.gz
+*.zip
+.deploy_temp/
+
+# Large offline binary installers & Windows wheels
+attendance_system_admin_v1/python-3.12.10-amd64.exe
+attendance_system_admin_v1/resource/
+*.whl
