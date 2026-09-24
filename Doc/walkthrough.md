@@ -144,8 +144,30 @@ sudo certbot --nginx -d goldenlamian.dolanyu.com
 
 ## 🔄 TAHAP 8: Alihkan QR Code di Semua Cabang
 
-Buka Google Sheet Absensi Anda: [Spreadsheet ID: 1ozd_CyxV7fVugEejI8gyCgquPKvjTie4LgxnPYEeLjA](https://docs.google.com/spreadsheets/d/1ozd_CyxV7fVugEejI8gyCgquPKvjTie4LgxnPYEeLjA) -> Tab **`Outlets`** -> Ubah kolom **`pwa_url`** menjadi:
-```text
-https://goldenlamian.dolanyu.com/
-```
-Seluruh monitor cabang otomatis terhubung ke server baru saat refresh.
+Kode pada file monitor outlet [`attendance_system_v1/outlet_display.html`](file:///Users/henmei/Documents/projects/Golden_Lamian/attendance_system_v1/outlet_display.html) **TIDAK PERLU DIUBAH SAMA SEKALI**.
+
+Untuk mengarahkan QR Code ke server baru `https://goldenlamian.dolanyu.com/`, Anda memiliki 2 opsi mudah:
+
+### OPSI 1: Tambahkan Kolom `pwa_url` di Tab `Outlets` (Rekomendasi - Otomatis ke Semua Cabang)
+Secara bawaan Google Sheet awal hanya memiliki kolom *Outlet, Latitude, Longitude, Radius, Secret*. Sistem backend Google Apps Script sudah dirancang otomatis mengenali kolom `pwa_url` jika ditambahkan:
+1. Buka spreadsheet Google Sheets Absensi Anda: [Spreadsheet ID: 1ozd_CyxV7fVugEejI8gyCgquPKvjTie4LgxnPYEeLjA](https://docs.google.com/spreadsheets/d/1ozd_CyxV7fVugEejI8gyCgquPKvjTie4LgxnPYEeLjA).
+2. Buka tab **`Outlets`**.
+3. Di sebelah kanan kolom `Secret` (misalnya kolom `F`), ketik nama header: **`pwa_url`**.
+4. Isi sel di bawahnya untuk semua outlet dengan:
+   ```text
+   https://goldenlamian.dolanyu.com/
+   ```
+   *(Anda cukup copy-paste atau tarik ke bawah untuk seluruh baris outlet)*.
+5. Selesai! Saat monitor PC outlet di cabang-cabang me-refresh atau sinkronisasi berkala, monitor akan otomatis mengambil URL baru dari kolom tersebut.
+
+---
+
+### OPSI 2: Ubah Langsung di Layar Monitor PC Outlet (Via Menu Pengaturan)
+Jika Anda tidak ingin menambah kolom di Google Sheet, Anda bisa mengubahnya langsung di peramban PC outlet yang bersangkutan:
+1. Di layar monitor outlet (`outlet_display.html`), klik tombol **⚙️ Konfigurasi / Edit** di pojok layar.
+2. Masukkan password admin outlet.
+3. Pada isian **URL PWA Karyawan (Hosting PWA)**, masukkan:
+   ```text
+   https://goldenlamian.dolanyu.com/
+   ```
+4. Klik tombol **Simpan & Jalankan**. Nilai ini akan tersimpan permanen di `localStorage` peramban PC cabang tersebut.
