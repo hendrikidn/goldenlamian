@@ -1015,10 +1015,10 @@
       const cloudData = await fetchCloudConfig(gasUrl, outlet);
       if (cloudData && cloudData.secret) {
         document.getElementById('inputSecret').value = cloudData.secret;
-        document.getElementById('inputPwaUrl').value = '';
+        document.getElementById('inputPwaUrl').value = cloudData.pwa_url || '';
         if (statusDiv) {
           statusDiv.style.color = 'var(--success)';
-          statusDiv.innerText = `✅ Berhasil sinkronisasi! Secret Key: ${cloudData.secret}`;
+          statusDiv.innerText = `✅ Berhasil sinkronisasi! Secret Key: ${cloudData.secret}${cloudData.pwa_url ? ' | PWA: ' + cloudData.pwa_url : ''}`;
         }
       } else {
         if (statusDiv) {
