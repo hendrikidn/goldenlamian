@@ -1,186 +1,151 @@
-# 📘 Panduan Lengkap: Deployment Golden Lamian dari GitHub ke VPS Contabo
-*(Panduan Praktis Langkah demi Langkah untuk Pemula)*
+# 📘 Panduan Lengkap: Deployment Golden Lamian ke VPS Contabo
+*(Menggunakan User Terpisah dari User `deploy` Eksisting)*
 
-Panduan ini disusun khusus untuk Anda yang **belum memiliki pengalaman mengelola atau men-deploy server**. Seluruh langkah disederhanakan dengan perintah yang tinggal disalin (*copy-paste*) dan disertai penjelasan visual mengenai apa yang terjadi di layar komputer Anda.
+Panduan ini disesuaikan dengan kondisi server Anda saat ini:
+* Anda sudah memiliki user **`deploy`** di server `46.250.228.75` untuk project mobile app lain.
+* Login langsung sebagai `root` via password ditutup oleh server (*Permission denied publickey*), sehingga seluruh perintah setup kita jalankan menggunakan **`sudo` dari user `deploy`**.
+* Kita akan membuat user mandiri bernama **`goldenlamian`** dengan direktori kerja terpisah di `/home/goldenlamian/` agar 100% terisolasi dari project `deploy`.
 
 ---
 
-## 🧭 Peta Alur Deployment (Mental Model)
+## 🧭 Peta Pemisahan Akun di Server (Zero Collision)
 
 ```text
- [Komputer Mac Anda]                     [GitHub Repository]
- (Menyimpan project lokal)               (Tempat simpan kode online)
-        │                                         │
-        │                                         │ 1. git clone
-        │                                         ▼
-        │                              ┌──────────────────────┐
-        │                              │     VPS CONTABO      │
-        │                              │ (Ubuntu 24.04 LTS)   │
-        │ 2. upload_credentials.sh     │                      │
-        │ (Kirim .env & kunci Google)  │  • PWA Karyawan      │
-        └─────────────────────────────►│  • HR Admin Portal   │
-                                       │  • Nginx + SSL HTTPS │
-                                       └──────────────────────┘
+                        VPS CONTABO (46.250.228.75)
+                                     │
+           ┌─────────────────────────┴─────────────────────────┐
+           ▼                                                   ▼
+┌─────────────────────────────────┐   ┌─────────────────────────────────────┐
+│      PROJECT DOLANYU            │   │      PROJECT GOLDEN LAMIAN          │
+│ • User Linux : deploy           │   │ • User Linux : goldenlamian         │
+│ • Home Folder: /home/deploy     │   │ • Home Folder: /home/goldenlamian   │
+│ • Web Folder : /var/www/dolanyu │   │ • PWA Folder : /home/goldenlamian/pwa
+│ • Backend API: Port 4100        │   │ • HR Admin   : Port 8502 (internal) │
+│ • Service    : dolanyu-api      │   │ • Service    : goldenlamian-admin   │
+└─────────────────────────────────┘   └─────────────────────────────────────┘
 ```
 
 ---
 
-## 🛠️ TAHAP 1: Menyiapkan Domain (DNS A Record)
-
-Sebelum server dapat diakses melalui internet menggunakan nama domain, kita harus mengarahkan alamat domain ke nomor IP server Contabo Anda.
-
-1. Buka situs tempat Anda mengelola domain **`dolanyu.com`** (misalnya di Cloudflare, Namecheap, Domainesia, atau cPanel hosting Anda).
-2. Cari menu bernama **DNS Management** atau **DNS Records**.
-3. Klik tombol **Add Record** (Tambah Record), lalu masukkan data berikut:
-   * **Type (Tipe):** `A`
-   * **Name / Host:** `goldenlamian`
-   * **IPv4 Address / Points to:** Masukkan **IP Publik VPS Contabo Anda** (contoh: `161.97.xxx.xxx`)
-   * **TTL:** Biarkan `Auto` (atau `300`).
-4. Klik **Save / Simpan**.
-
-> [!NOTE]
-> Setelah langkah ini selesai, alamat `goldenlamian.dolanyu.com` kini sudah tersambung dengan server Contabo Anda.
+## 🛠️ TAHAP 1: Menyiapkan DNS A Record
+Di panel DNS domain `dolanyu.com`:
+* **Type:** `A`
+* **Host / Name:** `goldenlamian`
+* **Points to / Value:** `46.250.228.75`
+* **TTL:** `Auto` (atau `300`)
 
 ---
 
-## 💻 TAHAP 2: Masuk ke Server VPS Contabo (SSH)
+## 💻 TAHAP 2: Masuk ke Server menggunakan User `deploy`
+Karena login `root` ditutup, masuklah menggunakan user `deploy` yang sudah Anda miliki:
 
-1. Di komputer Mac Anda, buka aplikasi **Terminal** (tekan tombol `Cmd + Spasi`, ketik `Terminal`, lalu tekan `Enter`).
-2. Ketik perintah berikut lalu tekan `Enter` *(ganti `IP_CONTABO` dengan nomor IP server Anda)*:
-   ```bash
-   ssh root@IP_CONTABO
-   ```
-3. Jika muncul pertanyaan:
-   `Are you sure you want to continue connecting (yes/no/[fingerprint])?`
-   Ketik **`yes`** lalu tekan `Enter`.
-4. Masukkan **Password root VPS Contabo** Anda:
-   *(Catatan penting: Saat mengetik password di sistem Linux, huruf/bintang **sengaja tidak terlihat** di layar untuk keamanan. Tetap ketik password Anda dengan benar sampai selesai, lalu tekan `Enter`).*
-5. Jika berhasil, Anda akan melihat tampilan selamat datang server Ubuntu: `root@vps:~#`.
+```bash
+ssh deploy@46.250.228.75
+```
+*(Anda sudah berhasil terhubung di terminal ini).*
 
 ---
 
-## 📥 TAHAP 3: Ambil Kode dari GitHub & Jalankan Pemasangan Otomatis
+## 👤 TAHAP 3: Buat User Baru `goldenlamian` & Direktori Terpisah
 
-Sekarang kita akan mengunduh kode dari GitHub dan membiarkan skrip otomatis mengatur user, Nginx, Python, dan service background.
+Jalankan perintah-perintah ini di jendela terminal server (di mana Anda sedang login sebagai `deploy`):
 
-Ketik perintah berikut satu per satu di terminal server:
-
-### 1. Download kode dari GitHub:
+### 1. Buat user baru `goldenlamian` beserta folder home `/home/goldenlamian`:
 ```bash
-git clone https://github.com/hendrikidn/goldenlamian.git
-```
-*(Tunggu 2–3 detik sampai muncul tulisan `done`)*.
-
-### 2. Masuk ke folder proyek:
-```bash
-cd goldenlamian
+sudo adduser --disabled-password --gecos "Golden Lamian Attendance" goldenlamian
 ```
 
-### 3. Jalankan Skrip Pemasangan Otomatis:
+### 2. Salin SSH Key dari user `deploy` ke user `goldenlamian`:
+*(Langkah ini sangat penting agar dari laptop Mac Anda nantinya bisa langsung login atau mengirim file ke user `goldenlamian` tanpa ditolak).*
 ```bash
+sudo mkdir -p /home/goldenlamian/.ssh
+sudo cp ~/.ssh/authorized_keys /home/goldenlamian/.ssh/authorized_keys
+sudo chown -R goldenlamian:goldenlamian /home/goldenlamian/.ssh
+sudo chmod 700 /home/goldenlamian/.ssh
+sudo chmod 600 /home/goldenlamian/.ssh/authorized_keys
+```
+
+### 3. Beri hak `sudo` ke user `goldenlamian`:
+```bash
+sudo usermod -aG sudo goldenlamian
+```
+
+---
+
+## 📥 TAHAP 4: Ambil Kode dari GitHub & Jalankan Pemasangan Otomatis
+
+Beralihlah ke user `goldenlamian` agar seluruh file project tersimpan di folder `/home/goldenlamian/`:
+
+### 1. Masuk sebagai user `goldenlamian`:
+```bash
+sudo su - goldenlamian
+```
+*(Tampilan terminal Anda akan berubah menjadi `goldenlamian@...:~$`)*.
+
+### 2. Download kode dari GitHub ke folder terpisah:
+```bash
+git clone https://github.com/hendrikidn/goldenlamian.git app_repo
+```
+
+### 3. Masuk ke folder repo dan jalankan installer:
+```bash
+cd app_repo
 sudo bash server_deploy/setup_server.sh
 ```
 
-**Apa yang dilakukan oleh skrip ini secara otomatis?**
-* ✅ Membuat user Linux terpisah bernama **`goldenlamian`** (menjaga aplikasi Dolanyu Anda tetap 100% aman).
-* ✅ Menyiapkan folder `/home/goldenlamian/pwa` dan `/home/goldenlamian/admin`.
-* ✅ Menginstall Python virtual environment dan modul yang dibutuhkan (Streamlit, DuckDB, Pandas, dll).
-* ✅ Mengaktifkan service latar belakang **`goldenlamian-admin.service`** agar portal HR Admin menyala 24 jam nonstop.
-* ✅ Memasang konfigurasi webserver **Nginx** tanpa mengganggu website Dolanyu yang sudah ada.
-
-Tunggu hingga skrip selesai menampilkan pesan berwarna hijau:  
-`✨ DEPLOYMENT GOLDEN LAMIAN KE SERVER BERHASIL!`
+> **Apa yang terjadi secara otomatis?**
+> * Berkas PWA disalin ke `/home/goldenlamian/pwa/`.
+> * Berkas HR Admin Portal disalin ke `/home/goldenlamian/admin/`.
+> * Python Virtual Environment disiapkan dan dependensi (Streamlit, DuckDB, Pandas) diinstall.
+> * Service latar belakang `goldenlamian-admin.service` otomatis aktif di port 8502.
+> * Konfigurasi Nginx dipasang di `/etc/nginx/sites-available/goldenlamian.conf` dan diuji sintaksnya (memastikan Dolanyu tidak terganggu).
 
 ---
 
-## 🔑 TAHAP 4: Mengunggah Kredensial Pribadi dari Komputer Mac Anda
+## 🔑 TAHAP 5: Unggah Kredensial Pribadi dari Laptop Mac Anda
 
-> [!IMPORTANT]
-> Karena file rahasia Google Service Account (`*.json`) dan `.env` **sengaja tidak disimpan di GitHub** (demi mencegah pencurian data oleh pihak luar), Anda perlu mengirimkannya sekali saja dari komputer Mac Anda ke server.
+Karena file kunci Google Service Account (`*.json`) dan `.env` tidak disimpan di GitHub demi keamanan, Anda cukup menjalankannya sekali dari Mac:
 
-1. Di komputer Mac Anda, buka **Tab Terminal Baru** (tekan tombol `Cmd + T` pada aplikasi Terminal).  
-   *(Pastikan tab baru ini berada di Mac Anda, bukan di dalam SSH server Contabo).*
-2. Masuk ke folder proyek Golden Lamian di Mac Anda:
+1. Di komputer Mac Anda, buka **Tab Terminal Baru** (tekan `Cmd + T`).  
+   *(Pastikan berada di Mac Anda, bukan di dalam server).*
+2. Masuk ke folder proyek Golden Lamian:
    ```bash
    cd /Users/henmei/Documents/projects/Golden_Lamian
    ```
-3. Jalankan skrip pembantu pengunggah kredensial *(ganti `IP_CONTABO` dengan IP server Anda)*:
+3. Jalankan skrip pengunggah (menggunakan user `deploy` yang sudah memiliki akses SSH):
    ```bash
-   ./upload_credentials.sh IP_CONTABO
+   ./upload_credentials.sh 46.250.228.75 deploy
    ```
-4. Masukkan password root server Anda jika diminta.
-5. Skrip akan otomatis mengunggah:
-   * File konfigurasi `.env`
-   * Kunci Service Account Google Cloud JSON
-   * Database DuckDB lokal
-   * Me-restart service HR Admin di server agar langsung mengenali kredensial tersebut.
+4. Skrip akan otomatis mengunggah `.env`, Google Cloud Service Account JSON, DuckDB, dan me-restart service di server.
 
 ---
 
-## 🔒 TAHAP 5: Mengaktifkan Sertifikat Keamanan SSL HTTPS (Gratis)
+## 🔒 TAHAP 6: Aktifkan Sertifikat SSL HTTPS (Gratis)
 
-PWA absensi (Kamera Wajah & GPS HP karyawan) **wajib menggunakan HTTPS** agar peramban ponsel mengizinkan akses sensor kamera.
+Kembali ke jendela terminal server Contabo Anda, lalu jalankan:
 
-1. Kembali ke **Tab Terminal pertama** (yang sedang terhubung ke SSH server Contabo Anda).
-2. Jalankan perintah Certbot:
-   ```bash
-   sudo certbot --nginx -d goldenlamian.dolanyu.com
-   ```
-3. Jika Certbot pertama kali dijalankan, sistem akan meminta:
-   * Masukkan alamat email Anda untuk notifikasi masa aktif sertifikat (misal: `admin@dolanyu.com`).
-   * Ketik **`Y`** untuk menyetujui *Terms of Service*.
-   * Ketik **`N`** atau **`Y`** jika ditanya mengenai newsletter EFF.
-4. Tunggu beberapa detik hingga muncul tulisan:
-   `Successfully received certificate.`  
-   `Congratulations! You have successfully enabled https://goldenlamian.dolanyu.com`
-
----
-
-## 📱 TAHAP 6: Menguji Coba Layanan
-
-Buka peramban (browser) di laptop atau ponsel Anda:
-
-1. **Aplikasi Karyawan (PWA):**
-   * Buka: `https://goldenlamian.dolanyu.com/`
-   * Layar scan wajah dan verifikasi NRP akan terbuka dengan koneksi aman (gembok hijau / HTTPS).
-2. **Dashboard Portal HR Admin:**
-   * Buka: `https://goldenlamian.dolanyu.com/admin/`
-   * Halaman login HR Admin Portal (Streamlit) akan terbuka.
-   * Masukkan password admin, dan klik tombol **`🔄 Refresh Data`** untuk memastikan data dari Google Sheets terhubung dengan sempurna.
-
----
-
-## 🔄 TAHAP 7: Mengalihkan Layar Monitor di Seluruh Outlet
-
-Kode pada file monitor outlet [`attendance_system_v1/outlet_display.html`](file:///Users/henmei/Documents/projects/Golden_Lamian/attendance_system_v1/outlet_display.html) **TIDAK PERLU DIUBAH SAMA SEKALI**.
-
-Untuk mengubah alamat sasaran QR Code di semua cabang:
-1. Buka spreadsheet Google Sheets Absensi Anda: [Spreadsheet ID: 1ozd_CyxV7fVugEejI8gyCgquPKvjTie4LgxnPYEeLjA](https://docs.google.com/spreadsheets/d/1ozd_CyxV7fVugEejI8gyCgquPKvjTie4LgxnPYEeLjA)
-2. Buka tab **`Outlets`**.
-3. Pada kolom **`pwa_url`**, masukkan nilai baru:
-   ```text
-   https://goldenlamian.dolanyu.com/
-   ```
-4. Selesai! Saat monitor di masing-masing cabang melakukan *auto-sync* berkala, QR Code yang ditampilkan akan otomatis mengarahkan kamera HP karyawan ke server Contabo baru Anda.
-
----
-
-## 💡 Tips & Perintah Pemeliharaan Rutin
-
-Jika di kemudian hari Anda melakukan update pada kode di GitHub dan ingin memperbarui server:
 ```bash
-# Masuk ke server
-ssh root@IP_CONTABO
-
-# Masuk ke folder git dan tarik update terbaru
-cd /root/goldenlamian
-git pull origin main
-
-# Jalankan ulang skrip installer (otomatis menyalin file baru dan restart service)
-sudo bash server_deploy/setup_server.sh
+sudo certbot --nginx -d goldenlamian.dolanyu.com
 ```
+* Masukkan email jika diminta (misal: `admin@dolanyu.com`).
+* Ketik **`Y`** untuk menyetujui *Terms of Service*.
+* Selesai! HTTPS langsung aktif untuk `goldenlamian.dolanyu.com`.
 
-Untuk melihat log aktivitas HR Admin Portal jika ada error:
-```bash
-sudo journalctl -u goldenlamian-admin -f
+---
+
+## 📱 TAHAP 7: Uji Coba Layanan
+
+1. **Aplikasi Karyawan (PWA):**  
+   👉 `https://goldenlamian.dolanyu.com/` (Pastikan izin Kamera dan GPS aktif).
+2. **Dashboard Portal HR Admin:**  
+   👉 `https://goldenlamian.dolanyu.com/admin/` (Login dan coba tombol `🔄 Refresh Data`).
+
+---
+
+## 🔄 TAHAP 8: Alihkan QR Code di Semua Cabang
+
+Buka Google Sheet Absensi Anda: [Spreadsheet ID: 1ozd_CyxV7fVugEejI8gyCgquPKvjTie4LgxnPYEeLjA](https://docs.google.com/spreadsheets/d/1ozd_CyxV7fVugEejI8gyCgquPKvjTie4LgxnPYEeLjA) -> Tab **`Outlets`** -> Ubah kolom **`pwa_url`** menjadi:
+```text
+https://goldenlamian.dolanyu.com/
 ```
+Seluruh monitor cabang otomatis terhubung ke server baru saat refresh.
