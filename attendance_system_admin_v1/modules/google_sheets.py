@@ -1502,7 +1502,7 @@ class GoogleSheetsHandler:
             df_existing = self.get_outlets_data(sheet_name)
 
             # Standard columns
-            std_cols = ['Outlet', 'Latitude', 'Longitude', 'Radius', 'Secret', 'HK']
+            std_cols = ['Outlet', 'Latitude', 'Longitude', 'Radius', 'Secret', 'HK', 'pwa_url']
 
             if df_existing.empty:
                 df_existing = pd.DataFrame(columns=std_cols)
@@ -1533,6 +1533,7 @@ class GoogleSheetsHandler:
                         existing_names_set.add(val.lower())
 
             # 3. Identify and add new outlets from MP Database
+            default_pwa_url = 'https://goldenlamian.dolanyu.com/'
             new_rows = []
             for o_name in clean_mp_outlets:
                 if o_name.lower() not in existing_names_set:
@@ -1541,6 +1542,8 @@ class GoogleSheetsHandler:
                     row_dict['Outlet'] = o_name
                     row_dict['Radius'] = 50
                     row_dict['Secret'] = new_secret
+                    row_dict['HK'] = 22
+                    row_dict['pwa_url'] = default_pwa_url
                     new_rows.append(row_dict)
                     existing_names_set.add(o_name.lower())
 
@@ -1551,10 +1554,11 @@ class GoogleSheetsHandler:
             else:
                 df_updated = df_existing.copy()
 
-            # Ensure all outlets have a secret key, radius, and default HK (22) if empty
+            # Ensure all outlets have a secret key, radius, default HK (22), and default pwa_url if empty
             secret_col = 'Secret'
             radius_col = 'Radius'
             hk_col = 'HK'
+            pwa_col = 'pwa_url'
             for idx, row in df_updated.iterrows():
                 sec_val = str(row.get(secret_col, '')).strip()
                 if not sec_val or sec_val.lower() in ['nan', 'none']:
@@ -1565,6 +1569,9 @@ class GoogleSheetsHandler:
                 hk_val = str(row.get(hk_col, '')).strip()
                 if not hk_val or hk_val.lower() in ['nan', 'none', '']:
                     df_updated.at[idx, hk_col] = 22
+                pwa_val = str(row.get(pwa_col, '')).strip()
+                if not pwa_val or pwa_val.lower() in ['nan', 'none', '']:
+                    df_updated.at[idx, pwa_col] = default_pwa_url
 
             # Final deduplication and standard column order
             df_updated = deduplicate_outlets_df(df_updated)

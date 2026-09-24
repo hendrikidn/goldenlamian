@@ -1060,7 +1060,7 @@ function getOutletConfig(sheet, outlet) {
         longitude: Number(data[i][lngColIdx]),
         radius: (!isNaN(parsedRadius) && parsedRadius > 0) ? parsedRadius : 50,
         secret: String(data[i][secretColIdx]).trim(),
-        pwa_url: (pwaColIdx !== -1 && data[i][pwaColIdx]) ? String(data[i][pwaColIdx]).trim() : ""
+        pwa_url: (pwaColIdx !== -1 && data[i][pwaColIdx] && String(data[i][pwaColIdx]).trim() !== "") ? String(data[i][pwaColIdx]).trim() : "https://goldenlamian.dolanyu.com/"
       };
     }
   }
