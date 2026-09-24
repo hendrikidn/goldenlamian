@@ -23,8 +23,8 @@ var TAB_OUTLET_SCHEDULE = "Outlet Schedule"; // Tab Jadwal Shift Outlet
 //   2. Validasi Lokasi GPS Geofence Outlet
 //   3. Validasi Binding Perangkat HP (1 HP hanya untuk 1 karyawan)
 //   4. Liveness Detection di HP (wajib deteksi wajah manusia & tersenyum sebelum menu absen aktif)
-var ENABLE_SERVER_FACE_MATCH = false; 
-var FACE_MATCH_THRESHOLD = 0.80; // Ambang batas jarak (hanya berlaku jika ENABLE_SERVER_FACE_MATCH = true)
+var ENABLE_SERVER_FACE_MATCH = true; 
+var FACE_MATCH_THRESHOLD = 0.90; // Ambang batas jarak toleran (aman dari false rejection tapi memblokir orang lain)
 
 /**
  * Menangani HTTP GET Request dari Dashboard PC Outlet atau PWA Ponsel
