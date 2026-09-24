@@ -1,117 +1,186 @@
-# Walkthrough Implementasi: Absensi QR Code Serverless (GAS + PWA + Windows 7 Monitor)
+# 📘 Panduan Lengkap: Deployment Golden Lamian dari GitHub ke VPS Contabo
+*(Panduan Praktis Langkah demi Langkah untuk Pemula)*
 
-Dokumen ini berisi panduan penyiapan, konfigurasi, dan pemasangan arsitektur absensi QR Code serverless dengan verifikasi wajah karyawan serta dashboard monitor PC berbasis HTML/JS statis yang **sepenuhnya kompatibel dengan Windows 7**.
-
-Untuk menghindari pemblokiran kebijakan Google Workspace (*"This app is blocked"*), skrip dirancang agar berjalan sebagai **Single Spreadsheet (Container-bound)** tanpa mengakses file di luar dirinya sendiri.
-
----
-
-## 1. Daftar File yang Tersedia di Repositori
-
-1. **[google_apps_script.js](file:///c:/Golden_Lamian/Google/google_apps_script.js)**:
-   * Backend serverless di Google Sheets. 
-   * Menangani `doPost(e)` untuk pengiriman absensi dari HP (validasi TOTP & geofencing GPS).
-   * Menangani `doGet(e)` untuk polling daftar kehadiran hari ini oleh layar PC outlet.
-2. **[outlet_display.html](file:///c:/Golden_Lamian/attendance_system_v1/outlet_display.html)**:
-   * Dashboard monitor PC outlet. **100% offline-ready untuk generate QR Code** dan ramah Windows 7.
-   * Cukup dibuka langsung lewat peramban (Google Chrome) di PC outlet.
-3. **[index.html](file:///c:/Golden_Lamian/Github/index.html)**:
-   * Antarmuka aplikasi PWA ponsel karyawan (form registrasi wajah, pemindai QR, verifikasi liveness).
-4. **[pwa_app.js](file:///c:/Golden_Lamian/Github/pwa_app.js)**:
-   * Logika PWA karyawan: pelacakan wajah `face-api.js`, deteksi kedipan (liveness), GPS, dan antrean absensi offline.
+Panduan ini disusun khusus untuk Anda yang **belum memiliki pengalaman mengelola atau men-deploy server**. Seluruh langkah disederhanakan dengan perintah yang tinggal disalin (*copy-paste*) dan disertai penjelasan visual mengenai apa yang terjadi di layar komputer Anda.
 
 ---
 
-## 2. Panduan Pengaturan Lengkap (Single Spreadsheet)
+## 🧭 Peta Alur Deployment (Mental Model)
 
-### Langkah 1: Siapkan Struktur Google Sheet Tunggal
-Pastikan Anda memiliki **satu Google Sheet** yang berisi 3 buah tab berikut:
-1. **Tab `MP Database`**:
-   * Berisi data karyawan. Kolom minimal wajib ada: `NRP` dan `Nama Karyawan`. Header kolom dapat berada di baris ke-1 atau ke-2 (GAS akan mendeteksinya secara dinamis).
-2. **Tab `Outlets`**:
-   * Menampung data lokasi outlet dan kunci rahasianya:
-     | Outlet ID | Nama Outlet | Latitude | Longitude | Radius | Secret |
-     | :--- | :--- | :--- | :--- | :--- | :--- |
-     | OUTLET_01 | Outlet Tebet | -6.22345 | 106.83456 | 50 | JBSWY3DPEHPK3PXP |
-   * *Catatan*: **Secret** adalah kunci acak 16 karakter Base32 (karakter A-Z, 2-7) khusus per outlet untuk enkripsi QR Code.
-3. **Tab `attendance_records`**:
-   * Tempat pencatatan data masuk harian. Jika tab ini belum ada, skrip akan membuatnya otomatis beserta kolom headernya saat absensi pertama terkirim.
-
----
-
-### Langkah 2: Deploy Google Apps Script (GAS)
-1. Buka spreadsheet Google Sheet tersebut di browser Anda.
-2. Klik menu **Extensions** > **Apps Script**.
-3. Hapus seluruh kode bawaan di editor, lalu salin kode dari **[google_apps_script.js](file:///c:/attendance_system_v1/google_apps_script.js)**.
-4. Klik **Save** (ikon disket).
-5. Klik **Deploy** (kanan atas) > **New Deployment**.
-6. Klik ikon gerigi (Select Type) dan pilih **Web App**.
-7. Konfigurasikan parameter deployment:
-   * *Description*: API Absensi QR PWA
-   * *Execute as*: **Me (email-anda@gmail.com)**
-   * *Who has access*: **Anyone** (wajib agar HP karyawan dan monitor PC bisa menembus API tanpa login Google).
-8. Klik **Deploy**, klik **Authorize Access**, pilih akun Google Anda.
-9. Saat muncul jendela peringatan keamanan (*Google hasn't verified this app*), klik tulisan **Advanced** di bagian bawah, lalu klik **Go to Untitled project (unsafe)** di paling bawah, lalu klik **Allow**.
-10. **Salin URL Web App** yang dihasilkan (contoh: `https://script.google.com/macros/s/xxxx/exec`).
+```text
+ [Komputer Mac Anda]                     [GitHub Repository]
+ (Menyimpan project lokal)               (Tempat simpan kode online)
+        │                                         │
+        │                                         │ 1. git clone
+        │                                         ▼
+        │                              ┌──────────────────────┐
+        │                              │     VPS CONTABO      │
+        │                              │ (Ubuntu 24.04 LTS)   │
+        │ 2. upload_credentials.sh     │                      │
+        │ (Kirim .env & kunci Google)  │  • PWA Karyawan      │
+        └─────────────────────────────►│  • HR Admin Portal   │
+                                       │  • Nginx + SSL HTTPS │
+                                       └──────────────────────┘
+```
 
 ---
 
-### Langkah 3: Cara Membuat (Generate) Secret Key Baru untuk Outlet Selanjutnya
+## 🛠️ TAHAP 1: Menyiapkan Domain (DNS A Record)
 
-Untuk mengaktifkan outlet baru di database, Anda memerlukan kunci rahasia (Secret Key Base32 16-karakter) yang unik agar QR Code dinamis dapat dienkripsi dengan aman. Anda bisa membuatnya langsung dari editor Google Apps Script:
+Sebelum server dapat diakses melalui internet menggunakan nama domain, kita harus mengarahkan alamat domain ke nomor IP server Contabo Anda.
 
-1. Masuk ke halaman **Apps Script** yang sudah terpasang.
-2. Pada bagian atas editor, pilih fungsi **`generateNewSecret`** pada menu drop-down di samping tombol "Run" (Jalankan).
-3. Klik tombol **Run** (Jalankan) (tombol ikon segitiga/Play).
-4. Menu **Execution log** akan muncul di bagian bawah layar editor. Anda akan melihat log seperti berikut:
-   `🔑 SECRET KEY BASE32 BARU: KISD123DFGDFGDFG`
-5. Salin kode rahasia 16-karakter tersebut (contoh: `KISD123DFGDFGDFG`) dan masukkan ke baris outlet baru Anda pada kolom **Secret** di tab `Outlets`.
-6. Masukkan kunci yang sama ketika melakukan konfigurasi di monitor PC outlet baru tersebut.
+1. Buka situs tempat Anda mengelola domain **`dolanyu.com`** (misalnya di Cloudflare, Namecheap, Domainesia, atau cPanel hosting Anda).
+2. Cari menu bernama **DNS Management** atau **DNS Records**.
+3. Klik tombol **Add Record** (Tambah Record), lalu masukkan data berikut:
+   * **Type (Tipe):** `A`
+   * **Name / Host:** `goldenlamian`
+   * **IPv4 Address / Points to:** Masukkan **IP Publik VPS Contabo Anda** (contoh: `161.97.xxx.xxx`)
+   * **TTL:** Biarkan `Auto` (atau `300`).
+4. Klik **Save / Simpan**.
 
----
-
-### Langkah 4: Setup PWA Karyawan di GitHub Pages (Gratis & Mudah)
-
-GitHub Pages adalah layanan hosting gratis dari GitHub untuk menampilkan file HTML, CSS, dan Javascript sebagai website aktif. Karyawan akan mengakses web ini dari HP mereka.
-
-1. **Buat Akun & Repositori Baru**:
-   * Buka [github.com](https://github.com) dan buat akun (jika belum punya).
-   * Klik tombol **New** (atau ikon **+** di pojok kanan atas > **New repository**).
-   * Konfigurasikan:
-     * *Repository name*: Isi nama bebas tanpa spasi, misal: `absen-qr`.
-     * *Visibility*: Pastikan Anda memilih **Public** (wajib agar GitHub Pages bisa diakses secara publik).
-     * Biarkan opsi lainnya default, lalu klik **Create repository**.
-
-2. **Unggah File PWA Anda**:
-   * Pada halaman repositori baru Anda, cari dan klik tautan **"uploading an existing file"** di bagian atas.
-   * Tarik (*drag & drop*) dua file berikut dari PC Anda ke area upload:
-     * **[pwa_index.html](file:///c:/attendance_system_v1/pwa_index.html)** -> **PENTING**: Ganti nama file ini menjadi **`index.html`** sebelum atau setelah diunggah agar otomatis terdeteksi sebagai halaman utama oleh GitHub.
-     * **[pwa_app.js](file:///c:/attendance_system_v1/pwa_app.js)** (Pastikan Anda sudah mengganti nilai variabel `GAS_URL` di dalam file ini dengan link Web App Google Apps Script Anda).
-   * Tunggu hingga proses upload selesai, lalu klik tombol hijau **Commit changes** di bagian bawah.
-
-3. **Aktifkan GitHub Pages**:
-   * Pada repositori GitHub Anda, klik menu tab **Settings** (ikon gerigi di bilah menu atas).
-   * Di menu navigasi sebelah kiri, cari bagian *Code and automation* dan klik **Pages**.
-   * Di bawah menu *Build and deployment*:
-     * *Source*: Pilih **Deploy from a branch**.
-     * *Branch*: Klik dropdown menu bertuliskan `None`, ganti menjadi **`main`** (atau `master`), lalu biarkan folder sebelahnya tetap `/ (root)`.
-     * Klik **Save** (Simpan).
-
-4. **Kunjungi Link PWA Anda**:
-   * Tunggu sekitar 1-2 menit sementara server GitHub mengaktifkan website Anda.
-   * *Refresh* halaman *Settings > Pages* tersebut. Di bagian atas halaman, Anda akan melihat pesan berwarna hijau berisi tautan situs web Anda yang aktif, contoh:
-     `Your site is live at https://username.github.io/absen-qr/`
-   * Salin link tersebut dan bagikan ke karyawan untuk diakses di HP mereka.
+> [!NOTE]
+> Setelah langkah ini selesai, alamat `goldenlamian.dolanyu.com` kini sudah tersambung dengan server Contabo Anda.
 
 ---
 
-### Langkah 5: Setup Dashboard Monitor PC Outlet (Windows 7)
-1. Pastikan browser **Google Chrome** terpasang pada PC outlet Windows 7.
-2. Salin folder **`attendance_system_v1`** (berisi `outlet_display.html`, `app_icon_v2.ico`, `qrcode.min.js`, dan `create_shortcut.bat`) ke harddisk PC outlet (misalnya di `C:\Absensi\` atau direktori mana pun).
-3. Klik ganda (double click) file **`create_shortcut.bat`**. Shortcut **Outlet Attendance** dengan icon resmi akan langsung terbuat di Desktop Windows (bisa dijalankan oleh user standar / non-admin).
-4. Buka shortcut **Outlet Attendance** di Desktop.
-5. Pada pembukaan pertama, layar setup konfigurasi akan muncul di browser PC. Masukkan informasi berikut:
-   * **Nama Outlet**: Pilih dari dropdown atau masukkan nama outlet (misal: `Outlet Tebet`).
-   * **URL Web App**: URL Google Apps Script Anda.
-   * Klik **Tarik dari Cloud** untuk mengisi *Secret Key* otomatis.
-6. Klik **Simpan & Jalankan**. Dashboard akan menyimpan data di penyimpanan lokal browser (*localStorage*) dan mulai men-generate QR Code dinamis serta menampilkan daftar absen harian secara otomatis.
+## 💻 TAHAP 2: Masuk ke Server VPS Contabo (SSH)
+
+1. Di komputer Mac Anda, buka aplikasi **Terminal** (tekan tombol `Cmd + Spasi`, ketik `Terminal`, lalu tekan `Enter`).
+2. Ketik perintah berikut lalu tekan `Enter` *(ganti `IP_CONTABO` dengan nomor IP server Anda)*:
+   ```bash
+   ssh root@IP_CONTABO
+   ```
+3. Jika muncul pertanyaan:
+   `Are you sure you want to continue connecting (yes/no/[fingerprint])?`
+   Ketik **`yes`** lalu tekan `Enter`.
+4. Masukkan **Password root VPS Contabo** Anda:
+   *(Catatan penting: Saat mengetik password di sistem Linux, huruf/bintang **sengaja tidak terlihat** di layar untuk keamanan. Tetap ketik password Anda dengan benar sampai selesai, lalu tekan `Enter`).*
+5. Jika berhasil, Anda akan melihat tampilan selamat datang server Ubuntu: `root@vps:~#`.
+
+---
+
+## 📥 TAHAP 3: Ambil Kode dari GitHub & Jalankan Pemasangan Otomatis
+
+Sekarang kita akan mengunduh kode dari GitHub dan membiarkan skrip otomatis mengatur user, Nginx, Python, dan service background.
+
+Ketik perintah berikut satu per satu di terminal server:
+
+### 1. Download kode dari GitHub:
+```bash
+git clone https://github.com/hendrikidn/goldenlamian.git
+```
+*(Tunggu 2–3 detik sampai muncul tulisan `done`)*.
+
+### 2. Masuk ke folder proyek:
+```bash
+cd goldenlamian
+```
+
+### 3. Jalankan Skrip Pemasangan Otomatis:
+```bash
+sudo bash server_deploy/setup_server.sh
+```
+
+**Apa yang dilakukan oleh skrip ini secara otomatis?**
+* ✅ Membuat user Linux terpisah bernama **`goldenlamian`** (menjaga aplikasi Dolanyu Anda tetap 100% aman).
+* ✅ Menyiapkan folder `/home/goldenlamian/pwa` dan `/home/goldenlamian/admin`.
+* ✅ Menginstall Python virtual environment dan modul yang dibutuhkan (Streamlit, DuckDB, Pandas, dll).
+* ✅ Mengaktifkan service latar belakang **`goldenlamian-admin.service`** agar portal HR Admin menyala 24 jam nonstop.
+* ✅ Memasang konfigurasi webserver **Nginx** tanpa mengganggu website Dolanyu yang sudah ada.
+
+Tunggu hingga skrip selesai menampilkan pesan berwarna hijau:  
+`✨ DEPLOYMENT GOLDEN LAMIAN KE SERVER BERHASIL!`
+
+---
+
+## 🔑 TAHAP 4: Mengunggah Kredensial Pribadi dari Komputer Mac Anda
+
+> [!IMPORTANT]
+> Karena file rahasia Google Service Account (`*.json`) dan `.env` **sengaja tidak disimpan di GitHub** (demi mencegah pencurian data oleh pihak luar), Anda perlu mengirimkannya sekali saja dari komputer Mac Anda ke server.
+
+1. Di komputer Mac Anda, buka **Tab Terminal Baru** (tekan tombol `Cmd + T` pada aplikasi Terminal).  
+   *(Pastikan tab baru ini berada di Mac Anda, bukan di dalam SSH server Contabo).*
+2. Masuk ke folder proyek Golden Lamian di Mac Anda:
+   ```bash
+   cd /Users/henmei/Documents/projects/Golden_Lamian
+   ```
+3. Jalankan skrip pembantu pengunggah kredensial *(ganti `IP_CONTABO` dengan IP server Anda)*:
+   ```bash
+   ./upload_credentials.sh IP_CONTABO
+   ```
+4. Masukkan password root server Anda jika diminta.
+5. Skrip akan otomatis mengunggah:
+   * File konfigurasi `.env`
+   * Kunci Service Account Google Cloud JSON
+   * Database DuckDB lokal
+   * Me-restart service HR Admin di server agar langsung mengenali kredensial tersebut.
+
+---
+
+## 🔒 TAHAP 5: Mengaktifkan Sertifikat Keamanan SSL HTTPS (Gratis)
+
+PWA absensi (Kamera Wajah & GPS HP karyawan) **wajib menggunakan HTTPS** agar peramban ponsel mengizinkan akses sensor kamera.
+
+1. Kembali ke **Tab Terminal pertama** (yang sedang terhubung ke SSH server Contabo Anda).
+2. Jalankan perintah Certbot:
+   ```bash
+   sudo certbot --nginx -d goldenlamian.dolanyu.com
+   ```
+3. Jika Certbot pertama kali dijalankan, sistem akan meminta:
+   * Masukkan alamat email Anda untuk notifikasi masa aktif sertifikat (misal: `admin@dolanyu.com`).
+   * Ketik **`Y`** untuk menyetujui *Terms of Service*.
+   * Ketik **`N`** atau **`Y`** jika ditanya mengenai newsletter EFF.
+4. Tunggu beberapa detik hingga muncul tulisan:
+   `Successfully received certificate.`  
+   `Congratulations! You have successfully enabled https://goldenlamian.dolanyu.com`
+
+---
+
+## 📱 TAHAP 6: Menguji Coba Layanan
+
+Buka peramban (browser) di laptop atau ponsel Anda:
+
+1. **Aplikasi Karyawan (PWA):**
+   * Buka: `https://goldenlamian.dolanyu.com/`
+   * Layar scan wajah dan verifikasi NRP akan terbuka dengan koneksi aman (gembok hijau / HTTPS).
+2. **Dashboard Portal HR Admin:**
+   * Buka: `https://goldenlamian.dolanyu.com/admin/`
+   * Halaman login HR Admin Portal (Streamlit) akan terbuka.
+   * Masukkan password admin, dan klik tombol **`🔄 Refresh Data`** untuk memastikan data dari Google Sheets terhubung dengan sempurna.
+
+---
+
+## 🔄 TAHAP 7: Mengalihkan Layar Monitor di Seluruh Outlet
+
+Kode pada file monitor outlet [`attendance_system_v1/outlet_display.html`](file:///Users/henmei/Documents/projects/Golden_Lamian/attendance_system_v1/outlet_display.html) **TIDAK PERLU DIUBAH SAMA SEKALI**.
+
+Untuk mengubah alamat sasaran QR Code di semua cabang:
+1. Buka spreadsheet Google Sheets Absensi Anda: [Spreadsheet ID: 1ozd_CyxV7fVugEejI8gyCgquPKvjTie4LgxnPYEeLjA](https://docs.google.com/spreadsheets/d/1ozd_CyxV7fVugEejI8gyCgquPKvjTie4LgxnPYEeLjA)
+2. Buka tab **`Outlets`**.
+3. Pada kolom **`pwa_url`**, masukkan nilai baru:
+   ```text
+   https://goldenlamian.dolanyu.com/
+   ```
+4. Selesai! Saat monitor di masing-masing cabang melakukan *auto-sync* berkala, QR Code yang ditampilkan akan otomatis mengarahkan kamera HP karyawan ke server Contabo baru Anda.
+
+---
+
+## 💡 Tips & Perintah Pemeliharaan Rutin
+
+Jika di kemudian hari Anda melakukan update pada kode di GitHub dan ingin memperbarui server:
+```bash
+# Masuk ke server
+ssh root@IP_CONTABO
+
+# Masuk ke folder git dan tarik update terbaru
+cd /root/goldenlamian
+git pull origin main
+
+# Jalankan ulang skrip installer (otomatis menyalin file baru dan restart service)
+sudo bash server_deploy/setup_server.sh
+```
+
+Untuk melihat log aktivitas HR Admin Portal jika ada error:
+```bash
+sudo journalctl -u goldenlamian-admin -f
+```
