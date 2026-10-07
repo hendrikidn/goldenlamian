@@ -26,10 +26,135 @@ var TAB_OUTLET_SCHEDULE = "Outlet Schedule"; // Tab Jadwal Shift Outlet
 var ENABLE_SERVER_FACE_MATCH = true; 
 var FACE_MATCH_THRESHOLD = 0.90; // Ambang batas jarak toleran (aman dari false rejection tapi memblokir orang lain)
 
+// ============================================================================
+// OPTIMASI PEMBACAAN SHEET
+// ============================================================================
+
+// Memo per-eksekusi: dalam satu doGet/doPost tiap tab referensi (MP Database, Outlets, Outlet Schedule)
+// hanya dibaca sekali walau dipakai beberapa fungsi. Direset di awal setiap request.
+var _sheetValuesMemo = {};
+
+function resetExecutionMemo_() {
+  _sheetValuesMemo = {};
+}
+
+function getSheetValues_(sheet) {
+  var key = sheet.getName();
+  if (!Object.prototype.hasOwnProperty.call(_sheetValuesMemo, key)) {
+    _sheetValuesMemo[key] = sheet.getDataRange().getValues();
+  }
+  return _sheetValuesMemo[key];
+}
+
+// Pembaca tanggal sel kolom 'date' attendance_records -> "yyyy-MM-dd".
+// Sel bertipe Date di-cache per timestamp agar puluhan ribu baris tidak memanggil Utilities.formatDate satu per satu.
+function makeAttendanceDateNormalizer_(tz) {
+  var cache = {};
+  return function (rawDateVal) {
+    if (rawDateVal instanceof Date) {
+      var t = rawDateVal.getTime();
+      if (!Object.prototype.hasOwnProperty.call(cache, t)) {
+        cache[t] = Utilities.formatDate(rawDateVal, tz, "yyyy-MM-dd");
+      }
+      return cache[t];
+    }
+    if (rawDateVal) return String(rawDateVal).replace(/^'+/, '').substring(0, 10);
+    return "";
+  };
+}
+
+// Pembaca tab attendance_records yang hemat. Tab ini terus bertambah (puluhan ribu baris per bulan) dan dulu dibaca
+// PENUH (getDataRange) dua kali di setiap absen, di dalam script lock. Sekarang:
+//   - sheet kecil (<= ATTENDANCE_FULL_READ_MAX_ROWS): baca penuh sekali (memo per-request), seperti sebelumnya;
+//   - sheet besar: baca HANYA kolom 'date' (memo per-request), tentukan baris yang tanggalnya memenuhi syarat, lalu
+//     baca hanya rentang baris itu dan hanya kolom yang dibutuhkan.
+// Hasilnya persis sama dengan membaca seluruh sheet untuk urutan baris apa pun (tidak bergantung pada kronologi);
+// kecepatan terbaik tercapai bila baris kronologis (selalu begitu lewat appendRow), karena rentangnya kecil.
+var ATTENDANCE_FULL_READ_MAX_ROWS = 1500;
+
+function getAttendanceReader_(attendanceSheet, tz) {
+  var key = "__attendance_reader__" + attendanceSheet.getName();
+  if (Object.prototype.hasOwnProperty.call(_sheetValuesMemo, key)) return _sheetValuesMemo[key];
+
+  var reader = {
+    sheet: attendanceSheet,
+    idx: { nrp: 0, date: 3, type: 5 },
+    lastRow: attendanceSheet.getLastRow(),
+    lastCol: attendanceSheet.getLastColumn(),
+    full: null,
+    dates: null,
+    normalizeDate: makeAttendanceDateNormalizer_(tz)
+  };
+
+  if (reader.lastRow > 1 && reader.lastCol > 0) {
+    var headers;
+    if (reader.lastRow <= ATTENDANCE_FULL_READ_MAX_ROWS) {
+      reader.full = getSheetValues_(attendanceSheet);
+      headers = reader.full[0];
+    } else {
+      headers = attendanceSheet.getRange(1, 1, 1, reader.lastCol).getValues()[0];
+    }
+    for (var h = 0; h < headers.length; h++) {
+      var hName = String(headers[h]).toLowerCase().trim();
+      if (hName === "nrp") reader.idx.nrp = h;
+      if (hName === "date") reader.idx.date = h;
+      if (hName === "type") reader.idx.type = h;
+    }
+  }
+
+  _sheetValuesMemo[key] = reader;
+  return reader;
+}
+
+// Mengembalikan { rows, offset, idx }: baris-baris (urut seperti di sheet) yang tanggalnya lolos dateMatches(),
+// nilai kolom c ada di row[c - offset]. neededColIdx = kolom selain 'date' yang akan dibaca pemanggil.
+function selectAttendanceRows_(reader, dateMatches, neededColIdx) {
+  var idx = reader.idx;
+  var result = { rows: [], offset: 0, idx: idx };
+  if (reader.lastRow <= 1 || reader.lastCol < 1) return result;
+
+  if (reader.full) {
+    for (var i = 1; i < reader.full.length; i++) {
+      if (dateMatches(reader.normalizeDate(reader.full[i][idx.date]))) result.rows.push(reader.full[i]);
+    }
+    return result;
+  }
+
+  if (idx.date >= reader.lastCol) return result; // kolom date tidak ada -> tidak ada baris yang cocok
+
+  if (!reader.dates) {
+    var dateCol = reader.sheet.getRange(2, idx.date + 1, reader.lastRow - 1, 1).getValues();
+    reader.dates = new Array(dateCol.length);
+    for (var r = 0; r < dateCol.length; r++) reader.dates[r] = reader.normalizeDate(dateCol[r][0]);
+  }
+
+  var first = -1, last = -1;
+  for (var k = 0; k < reader.dates.length; k++) {
+    if (dateMatches(reader.dates[k])) {
+      if (first === -1) first = k;
+      last = k;
+    }
+  }
+  if (first === -1) return result;
+
+  var cols = neededColIdx.concat([idx.date]);
+  var minC = Math.min.apply(null, cols);
+  var maxC = Math.min(Math.max.apply(null, cols), reader.lastCol - 1);
+  if (minC > maxC) return result;
+
+  var span = reader.sheet.getRange(first + 2, minC + 1, last - first + 1, maxC - minC + 1).getValues();
+  for (var j = 0; j < span.length; j++) {
+    if (dateMatches(reader.dates[first + j])) result.rows.push(span[j]);
+  }
+  result.offset = minC;
+  return result;
+}
+
 /**
  * Menangani HTTP GET Request dari Dashboard PC Outlet atau PWA Ponsel
  */
 function doGet(e) {
+  resetExecutionMemo_();
   try {
     var params = (e && e.parameter) ? e.parameter : {};
     var action = params.action;
@@ -344,6 +469,7 @@ function doGet(e) {
  * Menangani HTTP POST Request dari Ponsel Karyawan
  */
 function doPost(e) {
+  resetExecutionMemo_();
   if (!e || !e.postData || !e.postData.contents) {
     return jsonResponse("error", "Payload POST tidak ditemukan atau kosong.", 400);
   }
@@ -1021,7 +1147,7 @@ function handleUnbindDevice(nrpToUnbind) {
  * Mencari konfigurasi Outlet berdasarkan Outlet (Nama Outlet)
  */
 function getOutletConfig(sheet, outlet) {
-  var data = sheet.getDataRange().getValues();
+  var data = getSheetValues_(sheet);
   if (data.length < 2) return null;
 
   var outletColIdx = 0;
@@ -1071,7 +1197,7 @@ function getOutletConfig(sheet, outlet) {
  * Mencari Nama Karyawan berdasarkan NRP (Mendukung Header di Row 1 or Row 2)
  */
 function getEmployeeNameByNRP(sheet, nrp) {
-  var data = sheet.getDataRange().getValues();
+  var data = getSheetValues_(sheet);
   var nrpColIndex = -1; 
   var nameColIndex = -1; 
   var headerRowIndex = -1;
@@ -1272,46 +1398,27 @@ function getTodayAttendanceForNrp(attendanceSheet, nrp, todayDateStr, tz) {
 
   if (!attendanceSheet) return result;
 
-  var data = attendanceSheet.getDataRange().getValues();
-  if (data.length <= 1) return result;
-
-  var headers = data[0];
-  var nrpIdx = 0;
-  var dateIdx = 3;
-  var typeIdx = 5;
-
-  for (var h = 0; h < headers.length; h++) {
-    var hName = String(headers[h]).toLowerCase().trim();
-    if (hName === "nrp") nrpIdx = h;
-    if (hName === "date") dateIdx = h;
-    if (hName === "type") typeIdx = h;
-  }
+  var reader = getAttendanceReader_(attendanceSheet, tz);
+  var picked = selectAttendanceRows_(reader, function (d) { return d === todayDateStr; }, [reader.idx.nrp, reader.idx.type]);
+  var rows = picked.rows;
+  var off = picked.offset;
+  var idx = picked.idx;
 
   var targetNrpClean = String(nrp).trim().toLowerCase();
 
   // Pindai dari baris paling bawah ke atas untuk kecepatan maksimal
-  for (var i = data.length - 1; i >= 1; i--) {
-    var rowNrp = String(data[i][nrpIdx] || "").trim();
+  for (var i = rows.length - 1; i >= 0; i--) {
+    var rowNrp = String(rows[i][idx.nrp - off] || "").trim();
     if (rowNrp.toLowerCase() !== targetNrpClean) continue;
 
-    var rawDateVal = data[i][dateIdx];
-    var recDateStr = "";
-    if (rawDateVal instanceof Date) {
-      recDateStr = Utilities.formatDate(rawDateVal, tz, "yyyy-MM-dd");
-    } else if (rawDateVal) {
-      recDateStr = String(rawDateVal).replace(/^'+/, '').substring(0, 10);
+    var rowType = String(rows[i][idx.type - off] || "").trim();
+    if (rowType === "CLOCK_IN") {
+      result.hasClockIn = true;
+    } else if (rowType === "CLOCK_OUT") {
+      result.hasClockOut = true;
     }
-
-    if (recDateStr === todayDateStr) {
-      var rowType = String(data[i][typeIdx] || "").trim();
-      if (rowType === "CLOCK_IN") {
-        result.hasClockIn = true;
-      } else if (rowType === "CLOCK_OUT") {
-        result.hasClockOut = true;
-      }
-      if (!result.lastType) {
-        result.lastType = rowType;
-      }
+    if (!result.lastType) {
+      result.lastType = rowType;
     }
   }
 
@@ -1398,7 +1505,7 @@ function getOutletShifts(outletName) {
  */
 function getEmployeeRoleByNRP(sheet, nrp) {
   if (!sheet) return { isSupervisor: false, isAreaManager: false, position: "", outlet: "", name: "", managedOutlets: [] };
-  var data = sheet.getDataRange().getValues();
+  var data = getSheetValues_(sheet);
   if (data.length <= 1) return { isSupervisor: false, isAreaManager: false, position: "", outlet: "", name: "", managedOutlets: [] };
 
   var nrpIdx = -1;
@@ -1713,7 +1820,7 @@ function handleSupervisorDecision(requestData) {
  */
 function getOutletHK(schedSheet, outletName) {
   if (!schedSheet || !outletName) return 0;
-  var data = schedSheet.getDataRange().getValues();
+  var data = getSheetValues_(schedSheet);
   if (data.length <= 1) return 0;
 
   var headers = data[0];
@@ -1753,35 +1860,20 @@ function getOutletHK(schedSheet, outletName) {
  */
 function getMonthlyWorkingDaysForNrp(attendanceSheet, nrp, targetMonthStr, tz) {
   if (!attendanceSheet || !nrp || !targetMonthStr) return 0;
-  var data = attendanceSheet.getDataRange().getValues();
-  if (data.length <= 1) return 0;
 
-  var headers = data[0];
-  var nrpIdx = 0;
-  var dateIdx = 3;
+  var reader = getAttendanceReader_(attendanceSheet, tz);
+  var picked = selectAttendanceRows_(reader, function (d) { return !!d && d.substring(0, 7) === targetMonthStr; }, [reader.idx.nrp]);
+  var rows = picked.rows;
+  var off = picked.offset;
+  var idx = picked.idx;
 
-  for (var h = 0; h < headers.length; h++) {
-    var hName = String(headers[h]).toLowerCase().trim();
-    if (hName === "nrp") nrpIdx = h;
-    if (hName === "date") dateIdx = h;
-  }
+  var targetNrpClean = String(nrp).trim().toLowerCase();
 
   var distinctDates = {};
-  for (var i = 1; i < data.length; i++) {
-    var rowNrp = String(data[i][nrpIdx]).trim();
-    if (rowNrp.toLowerCase() !== String(nrp).trim().toLowerCase()) continue;
-
-    var rawDateVal = data[i][dateIdx];
-    var recDateStr = "";
-    if (rawDateVal instanceof Date) {
-      recDateStr = Utilities.formatDate(rawDateVal, tz, "yyyy-MM-dd");
-    } else if (rawDateVal) {
-      recDateStr = String(rawDateVal).replace(/^'+/, '').substring(0, 10);
-    }
-
-    if (recDateStr && recDateStr.substring(0, 7) === targetMonthStr) {
-      distinctDates[recDateStr] = true;
-    }
+  for (var i = 0; i < rows.length; i++) {
+    var rowNrp = String(rows[i][idx.nrp - off]).trim();
+    if (rowNrp.toLowerCase() !== targetNrpClean) continue;
+    distinctDates[reader.normalizeDate(rows[i][idx.date - off])] = true;
   }
 
   return Object.keys(distinctDates).length;

@@ -17,6 +17,17 @@ let regStream = null;
 let latestLiveDescriptor = null;
 let cachedOutletShifts = [];
 
+// Pengaturan performa pipeline wajah (face-api / TF.js)
+const FACE_INPUT_SIZE = 224;         // TinyFaceDetector loop liveness: wajah selfie dekat, 224 cukup & jauh lebih cepat dari 320
+const FACE_INPUT_SIZE_PRECISE = 320; // Registrasi (sekali jalan) & cadangan saat wajah tak terdeteksi di 224
+const FACE_CAMERA_SIZE = { width: 640, height: 480 }; // Kamera depan cukup 640x480 (frame besar hanya memperlambat upload tekstur ke GPU)
+let _modelsLoadPromise = null;
+let _faceWarmedUp = false;
+let _livenessRunId = 0;
+let _neutralFrameCount = 0;
+let _noFaceStreak = 0;
+let _outletShiftsInflight = {};
+
 // Variabel Data dari Hasil Scan QR Code PC
 let scannedQRData = null;
 let isProcessingQRScan = false;
@@ -415,8 +426,9 @@ function closeBrowserTab() {
 // CAMERA FUNCTIONS
 // =========================================================================
 
-async function openCameraStream(facingMode = "user") {
+async function openCameraStream(facingMode = "user", size = null) {
   const attempts = [
+    ...(size ? [{ video: { facingMode: { ideal: facingMode }, width: { ideal: size.width }, height: { ideal: size.height } } }] : []),
     { video: { facingMode: { ideal: facingMode } } },
     { video: { facingMode: facingMode } },
     { video: { facingMode: "user" } },
@@ -441,6 +453,12 @@ async function openCameraStream(facingMode = "user") {
 }
 
 async function stopAllCameras() {
+  // Matikan loop liveness yang masih menunggu giliran agar tidak berjalan di kamera berikutnya
+  _livenessRunId++;
+
+  // Jeda pelepasan kamera hanya diperlukan bila ada stream/scanner yang benar-benar baru dihentikan
+  let hadActiveCamera = !!(_nativeScannerInterval || _nativeScannerStream || scanStream || regStream || html5QrcodeScanner);
+
   // Hentikan native BarcodeDetector scanner jika aktif
   if (_nativeScannerInterval) {
     clearInterval(_nativeScannerInterval);
@@ -517,6 +535,7 @@ async function stopAllCameras() {
     videoElements.forEach(v => {
       if (v.srcObject && v.srcObject.getTracks) {
         v.srcObject.getTracks().forEach(track => {
+          if (track.readyState === 'live') hadActiveCamera = true;
           try { track.stop(); } catch (e) { }
         });
         v.srcObject = null;
@@ -524,7 +543,8 @@ async function stopAllCameras() {
     });
   } catch (e) { }
 
-  await new Promise(r => setTimeout(r, 500));
+  // Beri waktu singkat agar hardware kamera lepas; bila masih sibuk, openCameraStream sudah punya retry
+  if (hadActiveCamera) await new Promise(r => setTimeout(r, 150));
 }
 
 function stopScanCamera() {
@@ -574,22 +594,31 @@ async function startRegistrationFlow() {
   const resultDiv = document.getElementById('regResult');
   if (resultDiv) resultDiv.style.display = 'none';
 
-  try {
-    if (typeof faceapi !== 'undefined' && (!faceapi.nets.tinyFaceDetector.params || !faceapi.nets.faceLandmark64Net.params)) {
-      await loadFaceApiModels();
-    }
-  } catch (e) {
+  // Model AI & kamera disiapkan bersamaan (sebelumnya berurutan)
+  const modelsReady = ensureFaceModels().catch(e => {
     console.warn("[Reg] Warning loading face models:", e);
-  }
+    return false;
+  });
 
   try {
     await stopAllCameras();
-    regStream = await openCameraStream("user");
+    regStream = await openCameraStream("user", FACE_CAMERA_SIZE);
     const videoEl = document.getElementById('regFaceVideo');
     if (videoEl) {
       videoEl.srcObject = regStream;
       await videoEl.play().catch(e => console.warn("Video play warning:", e));
     }
+
+    // Tombol "Ambil Foto" baru aktif setelah model siap, supaya tidak ada klik yang gagal/menunggu diam-diam
+    if (!isModelsLoaded && regProgress) regProgress.innerHTML = '⏳ Menyiapkan model AI wajah...';
+    const modelsOk = await modelsReady;
+    if (!regStream) return; // pengguna berpindah tab selama menunggu
+    if (!modelsOk && !isModelsLoaded) {
+      showRegResult("Model AI wajah gagal dimuat. Periksa koneksi internet lalu coba lagi.", "error");
+      stopRegistrationCamera();
+      return;
+    }
+
     if (regProgress) regProgress.innerHTML = 'Posisikan wajah Anda di dalam bidang oval lalu tekan tombol <strong>Ambil Foto</strong>.';
     const btnCapture = document.getElementById('btnCapturePhoto');
     if (btnCapture) {
@@ -625,7 +654,9 @@ async function captureFaceEmbeddings(btnElement) {
   }
 
   try {
-    const detection = await faceapi.detectSingleFace(videoEl, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+    if (!isModelsLoaded) await ensureFaceModels();
+
+    const detection = await faceapi.detectSingleFace(videoEl, getFaceDetectorOptions(FACE_INPUT_SIZE_PRECISE))
       .withFaceLandmarks()
       .withFaceDescriptor();
 
@@ -639,7 +670,7 @@ async function captureFaceEmbeddings(btnElement) {
       return;
     }
 
-    const faceEmbedding = Array.from(detection.descriptor);
+    const faceEmbedding = roundDescriptor(detection.descriptor);
     const deviceId = getOrCreateDeviceId();
 
     if (regProgress) regProgress.innerHTML = '📡 Mengirim data registrasi ke server...';
@@ -679,11 +710,75 @@ async function captureFaceEmbeddings(btnElement) {
 // FACE API MODELS
 // =========================================================================
 
-async function loadFaceApiModels(retryCount = 0) {
+// Satu promise bersama: pemanggil paralel (startup, registrasi, liveness) menunggu unduhan yang sama,
+// bukan memulai unduhan 7MB kedua.
+function ensureFaceModels() {
+  if (isModelsLoaded) return Promise.resolve(true);
+  if (!_modelsLoadPromise) {
+    _modelsLoadPromise = loadFaceApiModels(0, true).finally(() => { _modelsLoadPromise = null; });
+  }
+  return _modelsLoadPromise;
+}
+
+function getFaceDetectorOptions(inputSize = FACE_INPUT_SIZE) {
+  return new faceapi.TinyFaceDetectorOptions({ inputSize: inputSize, scoreThreshold: 0.5 });
+}
+
+// Descriptor 128 float dibulatkan 6 desimal: jarak Euclidean berubah < 1e-5, tetapi payload ke GAS
+// dan isi sel di Face_Embedding menyusut ±55%.
+function roundDescriptor(descriptor) {
+  return Array.from(descriptor, v => Math.round(v * 1e6) / 1e6);
+}
+
+// Hitung descriptor wajah dari hasil deteksi+landmarks yang sudah ada (tanpa mengulang detektor).
+// Setara dengan rantai .withFaceDescriptor() milik face-api: wajah dipotong lewat align(dlib) lalu masuk ke FaceRecognitionNet.
+async function computeDescriptorFromDetection(input, detectionWithLandmarks) {
+  const alignedRect = detectionWithLandmarks.landmarks.align(null, { useDlibAlignment: true });
+  const faceImages = await faceapi.extractFaces(input, [alignedRect]);
+  const descriptor = await faceapi.nets.faceRecognitionNet.computeFaceDescriptor(faceImages[0]);
+  return roundDescriptor(descriptor);
+}
+
+// Inferensi pertama TF.js (WebGL) mengompilasi shader & mengunggah bobot ke GPU dan bisa memakan beberapa detik di HP.
+// Jalankan sekali dengan gambar kosong segera setelah model siap, agar pemakai tidak menanggungnya saat scan/registrasi.
+async function warmUpFaceModels() {
+  if (_faceWarmedUp || !isModelsLoaded || typeof faceapi === 'undefined') return;
+  _faceWarmedUp = true;
+  const t0 = performance.now();
+  try {
+    try { faceapi.tf.enableProdMode(); } catch (e) { }
+    await faceapi.tf.ready();
+
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = FACE_INPUT_SIZE_PRECISE;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    await faceapi.nets.tinyFaceDetector.locateFaces(canvas, getFaceDetectorOptions(FACE_INPUT_SIZE));
+    await faceapi.nets.tinyFaceDetector.locateFaces(canvas, getFaceDetectorOptions(FACE_INPUT_SIZE_PRECISE));
+    await faceapi.nets.faceLandmark68Net.detectLandmarks(canvas);
+    await faceapi.nets.faceRecognitionNet.computeFaceDescriptor(canvas);
+
+    dbgLog(`🔥 Warm-up AI selesai ${Math.round(performance.now() - t0)} ms (backend: ${faceapi.tf.getBackend()})`);
+  } catch (e) {
+    _faceWarmedUp = false;
+    console.warn('[AI Model] Warm-up gagal (tidak fatal):', e);
+  }
+}
+
+function scheduleFaceWarmUp() {
+  // Tunda sedikit agar tidak berebut dengan pembukaan kamera/scanner QR yang sedang berjalan
+  setTimeout(() => { warmUpFaceModels(); }, 200);
+}
+
+// silent=true: unduhan di latar belakang tanpa overlay penuh-layar (scanner QR tetap bisa dipakai);
+// overlay baru muncul bila gagal, atau saat pengguna menekan "Coba Lagi".
+async function loadFaceApiModels(retryCount = 0, silent = false) {
   const LOCAL_MODEL_URL = './models';
   const CDN_MODEL_URLS = [
-    'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model',
-    'https://unpkg.com/@vladmandic/face-api/model'
+    'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model',
+    'https://unpkg.com/@vladmandic/face-api@1.7.15/model'
   ];
 
   console.log(`[AI Model] Memuat model AI face-api... (percobaan #${retryCount + 1})`);
@@ -692,33 +787,41 @@ async function loadFaceApiModels(retryCount = 0) {
   const loadingText = document.getElementById('loadingOverlayText');
   const loadingErrBox = document.getElementById('loadingOverlayErrBox');
 
-  if (loadingOverlay) loadingOverlay.style.display = 'flex';
-  if (loadingText) loadingText.innerText = "Mengunduh Model AI Wajah...";
+  if (!silent) {
+    if (loadingOverlay) loadingOverlay.style.display = 'flex';
+    if (loadingText) loadingText.innerText = "Mengunduh Model AI Wajah...";
+  }
   if (loadingErrBox) loadingErrBox.style.display = 'none';
 
-  const withTimeout = (promise, ms = 15000) => {
+  const withTimeout = (promise, ms) => {
     return Promise.race([
       promise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Waktu pengunduhan habis (Timeout 15s)')), ms))
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`Waktu pengunduhan habis (Timeout ${Math.round(ms / 1000)}s)`)), ms))
     ]);
   };
 
-  // 1. Coba dari folder ./models lokal terlebih dahulu (paralel)
+  const loadAllFrom = (baseUrl) => Promise.all([
+    faceapi.nets.tinyFaceDetector.loadFromUri(baseUrl),
+    faceapi.nets.faceLandmark68Net.loadFromUri(baseUrl),
+    faceapi.nets.faceRecognitionNet.loadFromUri(baseUrl)
+  ]);
+
+  const onLoaded = (sourceLabel) => {
+    isModelsLoaded = true;
+    if (loadingOverlay) loadingOverlay.style.display = 'none';
+    console.log(`✅ Model AI wajah berhasil dimuat dari ${sourceLabel}!`);
+    scheduleFaceWarmUp();
+    return true;
+  };
+
+  // 1. Coba dari folder ./models lokal terlebih dahulu (paralel). Timeout longgar: ±7MB di jaringan seluler
+  //    pertama kali butuh waktu, dan menyerah terlalu cepat justru memulai unduhan CDN yang berebut bandwidth.
   try {
     if (typeof faceapi === 'undefined') {
       throw new Error("Library face-api.js belum siap atau tidak terdeteksi.");
     }
-
-    await withTimeout(Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri(LOCAL_MODEL_URL),
-      faceapi.nets.faceLandmark68Net.loadFromUri(LOCAL_MODEL_URL),
-      faceapi.nets.faceRecognitionNet.loadFromUri(LOCAL_MODEL_URL)
-    ]), 15000);
-
-    isModelsLoaded = true;
-    if (loadingOverlay) loadingOverlay.style.display = 'none';
-    console.log("✅ Model AI wajah berhasil dimuat dari folder ./models/ lokal!");
-    return true;
+    await withTimeout(loadAllFrom(LOCAL_MODEL_URL), 45000);
+    return onLoaded('folder ./models/ lokal');
   } catch (localErr) {
     console.warn("⚠️ Gagal memuat dari ./models/ lokal, mencoba CDN mirror...", localErr);
   }
@@ -727,16 +830,8 @@ async function loadFaceApiModels(retryCount = 0) {
   for (const cdnUrl of CDN_MODEL_URLS) {
     try {
       console.log(`[AI Model] Mencoba memuat dari CDN: ${cdnUrl}`);
-      await withTimeout(Promise.all([
-        faceapi.nets.tinyFaceDetector.loadFromUri(cdnUrl),
-        faceapi.nets.faceLandmark68Net.loadFromUri(cdnUrl),
-        faceapi.nets.faceRecognitionNet.loadFromUri(cdnUrl)
-      ]), 15000);
-
-      isModelsLoaded = true;
-      if (loadingOverlay) loadingOverlay.style.display = 'none';
-      console.log(`✅ Model AI wajah berhasil dimuat dari CDN (${cdnUrl})!`);
-      return true;
+      await withTimeout(loadAllFrom(cdnUrl), 30000);
+      return onLoaded(`CDN (${cdnUrl})`);
     } catch (cdnErr) {
       console.warn(`⚠️ Gagal memuat dari CDN (${cdnUrl}):`, cdnErr);
     }
@@ -745,6 +840,8 @@ async function loadFaceApiModels(retryCount = 0) {
   // 3. Jika gagal dari semua sumber
   console.error("❌ Gagal memuat model face-api.js dari semua sumber.");
   if (loadingOverlay) {
+    loadingOverlay.style.display = 'flex';
+    if (loadingText) loadingText.innerText = "Mengunduh Model AI Wajah...";
     if (loadingErrBox) {
       loadingErrBox.style.display = 'block';
       loadingErrBox.innerHTML = `
@@ -1035,9 +1132,6 @@ async function _startNativeBarcodeScanner(containerEl) {
     });
     await video.play().catch(e => console.warn('video.play() warning:', e));
 
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
     dbgLog('✅ Kamera native aktif! Mulai scan QR...');
 
     html5QrcodeScanner = {
@@ -1070,22 +1164,35 @@ async function _startNativeBarcodeScanner(containerEl) {
       }
     };
 
+    let scanBusy = false;
+    let fallbackCanvas = null; // dipakai hanya bila browser menolak detect(<video>)
     const scanLoop = async () => {
-      if (isProcessingQRScan) return;
+      if (isProcessingQRScan || scanBusy) return;
       if (!video.videoWidth || !video.videoHeight) return;
 
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0);
-
+      scanBusy = true;
       try {
-        const barcodes = await detector.detect(canvas);
+        let source = video; // BarcodeDetector menerima <video> langsung: tidak perlu menyalin tiap frame ke canvas
+        if (fallbackCanvas) {
+          fallbackCanvas.width = video.videoWidth;
+          fallbackCanvas.height = video.videoHeight;
+          fallbackCanvas.getContext('2d').drawImage(video, 0, 0);
+          source = fallbackCanvas;
+        }
+        const barcodes = await detector.detect(source);
         if (barcodes && barcodes.length > 0) {
           const rawValue = barcodes[0].rawValue;
           console.log('[DBG] QR detected by BarcodeDetector:', rawValue);
           await onQRScanSuccess(rawValue, barcodes[0]);
         }
-      } catch (e) { }
+      } catch (e) {
+        if (!fallbackCanvas) {
+          fallbackCanvas = document.createElement('canvas');
+          dbgLog('⚠️ detect(<video>) ditolak browser, beralih ke mode canvas');
+        }
+      } finally {
+        scanBusy = false;
+      }
     };
 
     _nativeScannerInterval = setInterval(scanLoop, 125);
@@ -1210,8 +1317,36 @@ async function _startJsQRScanner(containerEl) {
   }
 }
 
+// Pemuat skrip malas: html5-qrcode (±375KB) hanya dipakai bila BarcodeDetector & jsQR tidak bisa dipakai
+const HTML5_QRCODE_SRC = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
+let _html5QrcodeLoadPromise = null;
+
+function loadHtml5QrcodeLib() {
+  if (typeof Html5Qrcode !== 'undefined') return Promise.resolve();
+  if (!_html5QrcodeLoadPromise) {
+    _html5QrcodeLoadPromise = new Promise((resolve, reject) => {
+      const el = document.createElement('script');
+      el.src = HTML5_QRCODE_SRC;
+      el.onload = () => resolve();
+      el.onerror = () => {
+        _html5QrcodeLoadPromise = null;
+        reject(new Error('Gagal memuat library html5-qrcode'));
+      };
+      document.head.appendChild(el);
+    });
+  }
+  return _html5QrcodeLoadPromise;
+}
+
 async function _startHtml5QrcodeScanner(containerEl) {
   dbgLog('📷 Memulai Html5Qrcode (ZXing) scanner...');
+  try {
+    await loadHtml5QrcodeLib();
+  } catch (libErr) {
+    dbgLog(`❌ ${libErr.message}`);
+    showScanResult("Gagal memuat pemindai QR cadangan. Periksa koneksi internet lalu muat ulang aplikasi.", "error");
+    return;
+  }
 
   const config = {
     fps: 8,
@@ -1427,7 +1562,7 @@ async function onQRScanSuccess(decodedText, decodedResult) {
         isProcessingQRScan = false;
         setTimeout(() => startQRScanner(), 1000);
       }
-    }, 300);
+    }, 0);
 
   } catch (error) {
     isProcessingQRScan = false;
@@ -1454,10 +1589,13 @@ async function startLivenessCamera() {
   livenessPassed = false;
   baselineSmileRatio = null;
   smileFrameCount = 0;
+  _neutralFrameCount = 0;
+  _noFaceStreak = 0;
+  latestLiveDescriptor = null;
 
   try {
+    // Biasanya sudah dihentikan pemanggil; tidak ada jeda tambahan bila memang tidak ada kamera aktif
     await stopAllCameras();
-    await new Promise(r => setTimeout(r, 400));
   } catch (e) { }
 
   document.getElementById('scanStep1').style.display = 'none';
@@ -1466,44 +1604,79 @@ async function startLivenessCamera() {
   document.getElementById('challengeText').innerText = "Mendeteksi wajah Anda...";
 
   const video = document.getElementById('scanFaceVideo');
+  const runId = ++_livenessRunId;
 
   try {
-    scanStream = await openCameraStream("user");
+    scanStream = await openCameraStream("user", FACE_CAMERA_SIZE);
     video.srcObject = scanStream;
 
     await video.play().catch(e => console.warn("Video play warning:", e));
 
-    video.onloadedmetadata = () => {
-      runLivenessLoop(video);
-    };
-    if (video.readyState >= 2) {
-      runLivenessLoop(video);
+    // Kamera sudah tampil; bila model AI belum siap (unduhan pertama), tunggu di sini alih-alih membuat loop error
+    if (!isModelsLoaded) {
+      document.getElementById('challengeText').innerText = "Menyiapkan model AI wajah...";
+      const modelsOk = await ensureFaceModels();
+      if (runId !== _livenessRunId || !scanStream) return; // dibatalkan selama menunggu
+      if (!modelsOk) {
+        showScanResult("Model AI wajah belum berhasil dimuat. Periksa koneksi internet lalu coba lagi.<br><button onclick='startLivenessCamera()' class='btn' style='margin-top:10px; padding:8px 16px; font-size:0.85rem; width:auto; display:inline-block;'>🔄 Coba Lagi</button>", "error");
+        return;
+      }
+      document.getElementById('challengeText').innerText = "Mendeteksi wajah Anda...";
     }
+
+    // Mulai loop tepat satu kali walau metadata & readyState datang bersamaan
+    let loopStarted = false;
+    const startLoop = () => {
+      if (loopStarted || runId !== _livenessRunId) return;
+      loopStarted = true;
+      runLivenessLoop(video, runId);
+    };
+    video.onloadedmetadata = startLoop;
+    if (video.readyState >= 2) startLoop();
   } catch (error) {
     console.error("Gagal membuka kamera depan:", error);
     showScanResult("Gagal mengakses kamera depan: " + (error.message || error.toString()) + ".<br><button onclick='startLivenessCamera()' class='btn' style='margin-top:10px; padding:8px 16px; font-size:0.85rem; width:auto; display:inline-block;'>🔄 Coba Buka Kamera Lagi</button>", "error");
   }
 }
 
-async function runLivenessLoop(video) {
-  if (!scanStream) return;
+// Loop liveness: tiap frame HANYA menjalankan detektor + landmarks (ringan).
+// FaceRecognitionNet (descriptor 128-d, bagian terberat) dihitung satu kali pada frame netral yang stabil,
+// bukan di setiap frame seperti sebelumnya.
+async function runLivenessLoop(video, runId) {
+  if (runId !== _livenessRunId || !scanStream) return;
 
   const faceGuide = document.getElementById('faceGuide');
   const challengeText = document.getElementById('challengeText');
 
-  const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
-    .withFaceLandmarks()
-    .withFaceDescriptor();
+  let detection = null;
+  try {
+    // 224 untuk kecepatan; bila wajah belum terdeteksi 3 frame berturut-turut, coba 320 yang lebih sensitif
+    const inputSize = _noFaceStreak >= 3 ? FACE_INPUT_SIZE_PRECISE : FACE_INPUT_SIZE;
+    detection = await faceapi.detectSingleFace(video, getFaceDetectorOptions(inputSize)).withFaceLandmarks();
+  } catch (err) {
+    console.warn("[Liveness] Gagal mendeteksi wajah pada frame ini:", err);
+    if (runId === _livenessRunId && scanStream) setTimeout(() => runLivenessLoop(video, runId), 300);
+    return;
+  }
+
+  // Kamera dihentikan / sesi diganti selagi inferensi berjalan
+  if (runId !== _livenessRunId || !scanStream) return;
 
   if (detection) {
+    _noFaceStreak = 0;
     faceVerified = true;
-    
-    // Simpan sampel descriptor netral sebelum senyuman lebar mendistorsi geometri wajah
-    if (smileFrameCount === 0 || !latestLiveDescriptor) {
-      latestLiveDescriptor = Array.from(detection.descriptor);
-    }
-    
+    _neutralFrameCount++;
     faceGuide.className = "face-guide-oval verified";
+
+    // Simpan descriptor netral (sebelum senyuman lebar mendistorsi geometri wajah): sekali, pada frame ke-3 yang stabil
+    if (!latestLiveDescriptor && _neutralFrameCount >= 3) {
+      try {
+        latestLiveDescriptor = await computeDescriptorFromDetection(video, detection);
+      } catch (err) {
+        console.warn("[Liveness] Gagal menghitung descriptor wajah:", err);
+      }
+      if (runId !== _livenessRunId || !scanStream) return;
+    }
 
     if (!livenessPassed) {
       challengeText.innerText = "Tantangan: SILAKAN TERSENYUM! 😊";
@@ -1511,14 +1684,31 @@ async function runLivenessLoop(video) {
       const isSmileDetected = checkSmileLiveness(detection.landmarks);
 
       if (isSmileDetected) {
-        livenessPassed = true;
-        challengeText.innerText = "Senyuman Terdeteksi! 😊";
-        stopScanCamera();
-        showScanStep3();
-        return;
+        // Descriptor wajib ada (server mencocokkan wajah); bila belum ada, hitung dari frame ini
+        if (!latestLiveDescriptor) {
+          try {
+            latestLiveDescriptor = await computeDescriptorFromDetection(video, detection);
+          } catch (err) {
+            console.warn("[Liveness] Gagal menghitung descriptor saat senyuman terdeteksi:", err);
+          }
+          if (runId !== _livenessRunId || !scanStream) return;
+        }
+
+        if (latestLiveDescriptor) {
+          livenessPassed = true;
+          challengeText.innerText = "Senyuman Terdeteksi! 😊";
+          stopScanCamera();
+          showScanStep3();
+          return;
+        }
+        // Descriptor gagal dihitung: ulangi tantangan senyum dari awal
+        baselineSmileRatio = null;
+        smileFrameCount = 0;
       }
     }
   } else {
+    _noFaceStreak++;
+    _neutralFrameCount = 0;
     faceVerified = false;
     latestLiveDescriptor = null;
     baselineSmileRatio = null;
@@ -1527,7 +1717,7 @@ async function runLivenessLoop(video) {
     challengeText.innerText = "Dekatkan wajah Anda ke kamera";
   }
 
-  setTimeout(() => runLivenessLoop(video), 60);
+  setTimeout(() => runLivenessLoop(video, runId), 30);
 }
 
 function checkSmileLiveness(landmarks) {
@@ -1599,7 +1789,8 @@ async function showScanStep3() {
       .catch(err => console.warn("Sinkronisasi absensi background error:", err));
   }
 
-  if (scannedQRData && (scannedQRData.outlet || scannedQRData.outlet_id)) {
+  // Shift outlet sudah diminta sejak QR terbaca (onQRScanSuccess); hanya ulangi bila belum ada hasilnya
+  if (scannedQRData && (scannedQRData.outlet || scannedQRData.outlet_id) && (!cachedOutletShifts || cachedOutletShifts.length === 0)) {
     fetchOutletShifts(scannedQRData.outlet || scannedQRData.outlet_id);
   }
 
@@ -1610,7 +1801,9 @@ async function showScanStep3() {
     btn.style.pointerEvents = 'auto';
   });
 
-  if (localNRP) {
+  // Cek peran Supervisor (membaca sheet absensi di server) hanya bila profil belum diketahui atau memang supervisor
+  const profileKnownNonSupervisor = currentUserProfile && currentUserProfile.nrp === localNRP && currentUserProfile.is_supervisor === false;
+  if (localNRP && !profileKnownNonSupervisor) {
     checkSupervisorRoleForNRP(localNRP, false);
   }
 }
@@ -1629,7 +1822,12 @@ async function fetchOutletShifts(outletName) {
     }
   } catch (e) { }
 
-  if (navigator.onLine) {
+  if (!navigator.onLine) return;
+
+  // Panggilan bersamaan untuk outlet yang sama berbagi satu permintaan jaringan
+  if (_outletShiftsInflight[cacheKey]) return _outletShiftsInflight[cacheKey];
+
+  const request = (async () => {
     try {
       const url = `${GAS_URL}?action=get_outlet_shifts&outlet=${encodeURIComponent(cleanOutlet)}`;
       const response = await fetch(url);
@@ -1640,8 +1838,12 @@ async function fetchOutletShifts(outletName) {
       }
     } catch (err) {
       console.warn("Gagal fetch shift outlet dari GAS:", err);
+    } finally {
+      delete _outletShiftsInflight[cacheKey];
     }
-  }
+  })();
+  _outletShiftsInflight[cacheKey] = request;
+  return request;
 }
 
 // =========================================================================
@@ -3234,15 +3436,30 @@ async function submitChangeAmPin() {
 document.addEventListener('DOMContentLoaded', () => {
   console.log("🚀 Initializing Smart Attendance PWA...");
 
-  // Register Service Worker for offline caching
+  // Load Face API Models on startup (senyap di latar belakang; tidak memblokir scanner QR)
+  let modelsStartup = Promise.resolve(false);
+  try {
+    modelsStartup = ensureFaceModels().catch(() => false);
+  } catch (e) {
+    console.warn("Error starting loadFaceApiModels on startup:", e);
+  }
+
+  // Register Service Worker for offline caching.
+  // Didaftarkan setelah model selesai diunduh (maks. 30 detik): precache SW lalu cukup mengambil dari HTTP cache,
+  // sehingga pada kunjungan pertama ±7MB model tidak diunduh dua kali secara paralel.
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
+    const registerServiceWorker = () => {
       navigator.serviceWorker.register('./sw.js').then((reg) => {
         console.log('[PWA] Service Worker registered successfully with scope:', reg.scope);
       }).catch((err) => {
         console.warn('[PWA] Service Worker registration failed:', err);
       });
-    });
+    };
+    const pageLoaded = document.readyState === 'complete'
+      ? Promise.resolve()
+      : new Promise(resolve => window.addEventListener('load', resolve, { once: true }));
+    const modelsOrTimeout = Promise.race([modelsStartup, new Promise(resolve => setTimeout(resolve, 30000))]);
+    Promise.all([pageLoaded, modelsOrTimeout]).then(registerServiceWorker);
   }
 
   // Identify device user profile
@@ -3250,13 +3467,6 @@ document.addEventListener('DOMContentLoaded', () => {
     identifyDeviceUser();
   } catch (e) {
     console.warn("Error running identifyDeviceUser on startup:", e);
-  }
-
-  // Load Face API Models on startup
-  try {
-    loadFaceApiModels();
-  } catch (e) {
-    console.warn("Error starting loadFaceApiModels on startup:", e);
   }
 
   // Attach explicit listeners for Tugas Luar buttons
